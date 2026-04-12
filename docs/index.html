@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>telepy - テレアポ代行AI管理画面</title>
   <link rel="stylesheet" href="css/style.css">
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
 <div class="toast-container" id="toasts"></div>
@@ -359,6 +361,37 @@
     <div class="btn-group">
       <button class="btn btn-secondary" onclick="document.getElementById('log-modal').classList.add('hidden')">閉じる</button>
     </div>
+  </div>
+</div>
+
+<!-- ===== Firebase Setup Modal ===== -->
+<div id="setup-overlay" class="modal-overlay hidden">
+  <div class="modal" style="max-width:540px">
+    <h3>Firebase 初期設定</h3>
+    <p style="font-size:14px;color:var(--gray-500);margin-bottom:16px;">
+      データを保存するためにFirebaseの接続設定が必要です。<br>
+      <a href="https://console.firebase.google.com/" target="_blank" style="color:var(--primary)">Firebase Console</a>
+      → プロジェクト設定 → 全般 → 「アプリを追加」(ウェブ)
+      → 表示される <code>firebaseConfig</code> を貼り付けてください。
+    </p>
+    <div class="form-group">
+      <label>firebaseConfig（JSON形式で貼り付け）</label>
+      <textarea id="setup-config" rows="8" style="font-family:monospace;font-size:12px" placeholder='{
+  "apiKey": "AIza...",
+  "authDomain": "xxx.firebaseapp.com",
+  "projectId": "xxx",
+  "storageBucket": "xxx.appspot.com",
+  "messagingSenderId": "123",
+  "appId": "1:123:web:abc"
+}'></textarea>
+    </div>
+    <p style="font-size:12px;color:var(--gray-400);margin-bottom:12px;">
+      ※ Firestoreのルールを<strong>テストモード</strong>で作成してください（本番では認証付きルールに変更）
+    </p>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="Setup.connect()">接続</button>
+    </div>
+    <div id="setup-error" style="color:var(--danger);font-size:13px;margin-top:10px;" class="hidden"></div>
   </div>
 </div>
 
