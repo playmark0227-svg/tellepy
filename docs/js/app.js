@@ -349,9 +349,261 @@ document.getElementById('script-form').addEventListener('submit', async function
   } catch (e) { toast('保存に失敗しました: ' + e.message, 'error'); }
 });
 
+// ===== Live Monitor =====
+var Monitor = {
+  activeSession: null,
+  timerInterval: null,
+  demoInterval: null,
+  demoStep: 0,
+  startTime: null,
+
+  // デモ用の会話シナリオ
+  demoScenarios: [
+    {
+      name: 'アポ獲得パターン',
+      steps: [
+        { state: 'GREETING', interest: 2, mood: 'neutral', strategy: '丁寧な導入',
+          role: 'assistant', text: 'お世話になっております。私、株式会社サンプルのAIアシスタントでございます。本日は経理業務の効率化についてご案内のお電話をさせていただきました。経理ご担当者様はいらっしゃいますでしょうか。' },
+        { state: 'GREETING', interest: 2, mood: 'neutral',
+          role: 'user', text: 'はい、経理の田中です。何でしょうか。' },
+        { state: 'QUALIFYING', interest: 3, mood: 'curious', strategy: 'SPIN質問法',
+          role: 'assistant', text: '田中様、お忙しいところ恐れ入ります。早速ですが、御社では毎月の経費精算にどれくらいのお時間をかけていらっしゃいますか？', contact_name: '田中' },
+        { state: 'QUALIFYING', interest: 3, mood: 'thinking',
+          role: 'user', text: 'うーん、そうですね...月末になると結構かかりますね。20時間くらいでしょうか。' },
+        { state: 'PITCHING', interest: 4, mood: 'interested', strategy: '課題深掘り → 解決策提示',
+          role: 'assistant', text: 'やはりそうでしたか。実は同規模の企業様でも同じお悩みを伺うことが多いのですが、弊社のクラウド経費精算ツール「ラクケイ」を導入されたA社様では、月20時間が6時間にまで短縮されました。領収書をスマホで撮影するだけでAIが自動仕分けいたします。' },
+        { state: 'PITCHING', interest: 4, mood: 'interested',
+          role: 'user', text: 'へぇ、それは便利そうですね。でもうちは弥生を使っているんですが、連携できるんですか？' },
+        { state: 'PITCHING', interest: 4, mood: 'positive', strategy: '技術的不安の解消',
+          role: 'assistant', text: 'はい、弥生とはワンクリックで連携可能でございます。既存のフローを一切変えることなく導入いただけます。他にもfreeeやマネーフォワードにも対応しております。' },
+        { state: 'CLOSING', interest: 5, mood: 'positive', strategy: 'クロージング',
+          role: 'assistant', text: 'ぜひ一度、15分ほどのオンラインデモで実際の画面をご覧いただければと思います。来週でしたら火曜と水曜、どちらがご都合よろしいでしょうか。' },
+        { state: 'CLOSING', interest: 5, mood: 'positive',
+          role: 'user', text: '水曜の14時なら空いていますよ。' },
+        { state: 'HANDOFF', interest: 5, mood: 'positive', strategy: '予約確定',
+          role: 'assistant', text: 'ありがとうございます！それでは来週水曜日14時にオンラインデモのご予約をいただきます。田中様のメールアドレスに詳細をお送りいたしますね。本日はお忙しい中お時間いただき誠にありがとうございました。', appointment: '2026-04-16 14:00' },
+      ]
+    },
+    {
+      name: '断り返し成功パターン',
+      steps: [
+        { state: 'GREETING', interest: 2, mood: 'neutral', strategy: '丁寧な導入',
+          role: 'assistant', text: 'お世話になっております。私、株式会社サンプルのAIアシスタントでございます。経費精算の効率化についてご案内させていただいております。' },
+        { state: 'GREETING', interest: 1, mood: 'annoyed',
+          role: 'user', text: 'あ、営業ですか？今ちょっと忙しいので...' },
+        { state: 'OBJECTION', interest: 2, mood: 'neutral', strategy: '共感 → 価値提示', objection: true,
+          role: 'assistant', text: 'お忙しいところ大変申し訳ございません。30秒だけお時間いただけますか。実は御社と同業の企業様で、月20時間の経費精算作業が6時間にまで削減できた事例がございまして。' },
+        { state: 'QUALIFYING', interest: 3, mood: 'curious',
+          role: 'user', text: '...30秒だけなら。具体的にどういうことですか？' },
+        { state: 'PITCHING', interest: 3, mood: 'thinking', strategy: '具体事例で信頼構築',
+          role: 'assistant', text: '領収書をスマホで撮影するだけでAIが自動仕分けするツールでして、OCR精度99.2%で手入力が完全にゼロになります。初期費用もゼロで、30日間無料でお試しいただけます。' },
+        { state: 'PITCHING', interest: 4, mood: 'interested',
+          role: 'user', text: 'なるほど...無料で試せるんですか。ちょっと資料を送ってもらえますか？' },
+        { state: 'CLOSING', interest: 4, mood: 'positive', strategy: '資料送付 → デモ提案',
+          role: 'assistant', text: 'もちろんでございます。資料と合わせて3分のデモ動画もお送りいたします。差し支えなければ、資料をご覧いただいた後、来週10分ほどオンラインで詳しくご説明させていただけないでしょうか。', contact_name: '鈴木' },
+        { state: 'HANDOFF', interest: 4, mood: 'positive',
+          role: 'user', text: 'そうですね、来週の木曜午前中ならいいですよ。', appointment: '2026-04-17 10:00' },
+      ]
+    }
+  ],
+
+  reset: function() {
+    this.activeSession = null;
+    this.demoStep = 0;
+    if (this.timerInterval) clearInterval(this.timerInterval);
+    if (this.demoInterval) clearInterval(this.demoInterval);
+    this.timerInterval = null;
+    this.demoInterval = null;
+    this.startTime = null;
+
+    document.getElementById('monitor-pulse').className = 'monitor-pulse';
+    document.getElementById('monitor-status-label').textContent = '待機中';
+    document.getElementById('monitor-timer').textContent = '00:00';
+    document.getElementById('monitor-phone').textContent = '-';
+    document.getElementById('monitor-header').className = 'monitor-header';
+
+    // reset states
+    document.querySelectorAll('.state-node').forEach(function(n) {
+      n.classList.remove('active', 'passed');
+    });
+
+    // reset metrics
+    document.getElementById('interest-fill').style.width = '0%';
+    document.getElementById('interest-value').textContent = '-';
+    document.getElementById('metric-mood').textContent = '-';
+    document.getElementById('metric-turns').textContent = '0';
+    document.getElementById('metric-objections').textContent = '0 / 3';
+
+    // reset strategy
+    document.getElementById('monitor-strategy').innerHTML = '<div class="strategy-badge">待機中</div>';
+
+    // reset info
+    document.getElementById('info-name').textContent = '-';
+    document.getElementById('info-appo').textContent = '-';
+    document.getElementById('info-notes').textContent = '-';
+
+    // reset chat
+    document.getElementById('monitor-chat').innerHTML = '<div class="chat-empty">架電を開始すると会話がここに表示されます</div>';
+  },
+
+  startDemo: function(phone, scenarioIndex) {
+    this.reset();
+    var scenario = this.demoScenarios[scenarioIndex || 0];
+    this.activeSession = {
+      phone: phone,
+      scenario: scenario,
+      turnCount: 0,
+      objectionCount: 0,
+      conversationLog: [],
+    };
+    this.startTime = Date.now();
+
+    // update header
+    document.getElementById('monitor-pulse').classList.add('live');
+    document.getElementById('monitor-status-label').textContent = '通話中';
+    document.getElementById('monitor-phone').textContent = phone;
+    document.getElementById('monitor-header').classList.add('active');
+
+    // start timer
+    var self = this;
+    this.timerInterval = setInterval(function() {
+      var elapsed = Math.floor((Date.now() - self.startTime) / 1000);
+      var min = String(Math.floor(elapsed / 60)).padStart(2, '0');
+      var sec = String(elapsed % 60).padStart(2, '0');
+      document.getElementById('monitor-timer').textContent = min + ':' + sec;
+    }, 1000);
+
+    // clear chat
+    document.getElementById('monitor-chat').innerHTML = '';
+
+    // start playing steps
+    this.demoStep = 0;
+    this.playNextStep();
+  },
+
+  playNextStep: function() {
+    var self = this;
+    var scenario = this.activeSession.scenario;
+    if (this.demoStep >= scenario.steps.length) {
+      // demo finished
+      document.getElementById('monitor-pulse').classList.remove('live');
+      document.getElementById('monitor-status-label').textContent = '通話終了';
+      if (this.timerInterval) clearInterval(this.timerInterval);
+      return;
+    }
+
+    var step = scenario.steps[this.demoStep];
+    var delay = step.role === 'assistant' ? 2500 : 1800;
+    if (this.demoStep === 0) delay = 800;
+
+    this.demoInterval = setTimeout(function() {
+      self.applyStep(step);
+      self.demoStep++;
+      self.playNextStep();
+    }, delay);
+  },
+
+  applyStep: function(step) {
+    // update state
+    if (step.state) {
+      this.updateState(step.state);
+    }
+
+    // update interest
+    if (step.interest) {
+      var pct = (step.interest / 5) * 100;
+      document.getElementById('interest-fill').style.width = pct + '%';
+      document.getElementById('interest-value').textContent = step.interest;
+    }
+
+    // update mood
+    if (step.mood) {
+      var moods = {
+        neutral: '😐 普通',
+        curious: '🤔 興味',
+        thinking: '💭 検討中',
+        interested: '😊 前向き',
+        positive: '😄 好感触',
+        annoyed: '😒 迷惑',
+        negative: '😞 消極的',
+      };
+      document.getElementById('metric-mood').textContent = moods[step.mood] || step.mood;
+    }
+
+    // update turn count
+    if (step.role === 'user') {
+      this.activeSession.turnCount++;
+      document.getElementById('metric-turns').textContent = this.activeSession.turnCount;
+    }
+
+    // update objection
+    if (step.objection) {
+      this.activeSession.objectionCount++;
+      document.getElementById('metric-objections').textContent = this.activeSession.objectionCount + ' / 3';
+    }
+
+    // update strategy
+    if (step.strategy) {
+      document.getElementById('monitor-strategy').innerHTML =
+        '<div class="strategy-badge active">' + step.strategy + '</div>';
+    }
+
+    // update contact_name
+    if (step.contact_name) {
+      document.getElementById('info-name').textContent = step.contact_name + '様';
+    }
+
+    // update appointment
+    if (step.appointment) {
+      document.getElementById('info-appo').textContent = step.appointment;
+    }
+
+    // add chat message
+    this.addChatMessage(step.role, step.text);
+  },
+
+  updateState: function(state) {
+    var mainStates = ['GREETING', 'QUALIFYING', 'PITCHING', 'CLOSING'];
+    var mainIndex = mainStates.indexOf(state);
+
+    document.querySelectorAll('.state-node').forEach(function(n) {
+      n.classList.remove('active');
+    });
+
+    // mark passed states
+    if (mainIndex >= 0) {
+      for (var i = 0; i < mainIndex; i++) {
+        var node = document.querySelector('.state-node[data-state="' + mainStates[i] + '"]');
+        if (node) node.classList.add('passed');
+      }
+    }
+
+    // mark active state
+    var activeNode = document.querySelector('.state-node[data-state="' + state + '"]');
+    if (activeNode) activeNode.classList.add('active');
+  },
+
+  addChatMessage: function(role, text) {
+    var chat = document.getElementById('monitor-chat');
+    var isAI = role === 'assistant';
+    var div = document.createElement('div');
+    div.className = 'chat-msg ' + (isAI ? 'ai' : 'user');
+    div.innerHTML =
+      '<div class="chat-avatar ' + (isAI ? 'ai' : 'user') + '">' + (isAI ? '🤖' : '👤') + '</div>' +
+      '<div class="chat-bubble">' +
+        '<div class="chat-role ' + (isAI ? 'ai' : '') + '">' + (isAI ? 'AI' : '相手') + '</div>' +
+        '<div class="chat-text">' + text + '</div>' +
+      '</div>';
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+  }
+};
+
 // ===== Calls =====
 var Calls = {
   csvFile: null,
+  activeSessions: [],
+  sessionIdCounter: 0,
 
   load: async function() {
     try {
@@ -361,11 +613,29 @@ var Calls = {
         return '<option value="' + f + '">' + (scripts[f].client_name || f) + '</option>';
       }).join('');
     } catch (e) { /* ignore */ }
+    this.renderSessions();
   },
 
   initiate: async function() {
     var phone = document.getElementById('call-phone').value.trim();
     if (!phone) { toast('電話番号を入力してください', 'error'); return; }
+
+    // ランダムにシナリオを選択
+    var scenarioIndex = Math.floor(Math.random() * Monitor.demoScenarios.length);
+
+    // セッションを追加
+    var sessionId = ++this.sessionIdCounter;
+    var session = {
+      id: sessionId,
+      phone: phone,
+      state: 'GREETING',
+      startTime: Date.now(),
+      scenarioIndex: scenarioIndex,
+    };
+    this.activeSessions.push(session);
+    this.renderSessions();
+
+    // Firestore に記録
     try {
       await col('call_history').add({
         called_at: new Date().toISOString(),
@@ -375,9 +645,39 @@ var Calls = {
         appointment_datetime: null,
         conversation_log: [{ role: 'assistant', content: 'AIアシスタントがご案内します。お世話になっております。' }],
       });
-      toast('架電を開始しました（デモ）: ' + phone, 'info');
-      document.getElementById('call-phone').value = '';
-    } catch (e) { toast('エラー: ' + e.message, 'error'); }
+    } catch (e) { /* ignore */ }
+
+    // ライブモニターを開始
+    Monitor.startDemo(phone, scenarioIndex);
+    toast('架電を開始しました: ' + phone, 'info');
+    document.getElementById('call-phone').value = '';
+  },
+
+  renderSessions: function() {
+    var el = document.getElementById('call-sessions');
+    if (this.activeSessions.length === 0) {
+      el.innerHTML = '<p style="color:var(--gray-400);font-size:14px;">通話中のセッションはありません</p>';
+      return;
+    }
+    el.innerHTML = this.activeSessions.map(function(s) {
+      var elapsed = Math.floor((Date.now() - s.startTime) / 1000);
+      var min = String(Math.floor(elapsed / 60)).padStart(2, '0');
+      var sec = String(elapsed % 60).padStart(2, '0');
+      return '<div class="session-item" onclick="Calls.selectSession(' + s.id + ')">' +
+        '<div class="session-phone">' + s.phone + '</div>' +
+        '<div class="session-meta">' +
+          '<span class="session-state">' + s.state + '</span>' +
+          '<span class="session-time">' + min + ':' + sec + '</span>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  },
+
+  selectSession: function(id) {
+    var session = this.activeSessions.find(function(s) { return s.id === id; });
+    if (session) {
+      Monitor.startDemo(session.phone, session.scenarioIndex);
+    }
   },
 
   handleDrop: function(e) {
