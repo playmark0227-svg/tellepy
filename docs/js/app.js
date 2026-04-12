@@ -1,5 +1,15 @@
 /* telepy 管理画面 - Firebase Firestore 永続化版 */
 
+// ===== Firebase Config (直接埋め込み) =====
+var FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAlY6wW9jPEw46RzrV3g04vzJJdMfVcGAk",
+  authDomain: "telepy-3ef44.firebaseapp.com",
+  projectId: "telepy-3ef44",
+  storageBucket: "telepy-3ef44.firebasestorage.app",
+  messagingSenderId: "235576373254",
+  appId: "1:235576373254:web:1dac35cc7e5e68d02a5387"
+};
+
 // ===== Firebase Store =====
 var db = null;
 
@@ -76,19 +86,12 @@ var Setup = {
 
 // ===== Initialization =====
 document.addEventListener('DOMContentLoaded', async function() {
-  var saved = localStorage.getItem('telepy_fb_config');
-  if (saved) {
-    try {
-      var config = JSON.parse(saved);
-      if (!firebase.apps.length) firebase.initializeApp(config);
-      db = firebase.firestore();
-      await initApp();
-    } catch (e) {
-      console.error(e);
-      localStorage.removeItem('telepy_fb_config');
-      document.getElementById('setup-overlay').classList.remove('hidden');
-    }
-  } else {
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.firestore();
+    await initApp();
+  } catch (e) {
+    console.error('Firebase初期化エラー:', e);
     document.getElementById('setup-overlay').classList.remove('hidden');
   }
 });
