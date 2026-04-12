@@ -1,13 +1,13 @@
-/* tellepy 管理画面 - GitHub Pages スタンドアロン版 (localStorage) */
+/* telepy 管理画面 - GitHub Pages スタンドアロン版 (localStorage) */
 
 // ===== Storage =====
 const Store = {
   get(key, fallback) {
-    try { const v = localStorage.getItem('tellepy_' + key); return v ? JSON.parse(v) : fallback; }
+    try { const v = localStorage.getItem('telepy_' + key); return v ? JSON.parse(v) : fallback; }
     catch { return fallback; }
   },
   set(key, value) {
-    localStorage.setItem('tellepy_' + key, JSON.stringify(value));
+    localStorage.setItem('telepy_' + key, JSON.stringify(value));
   }
 };
 

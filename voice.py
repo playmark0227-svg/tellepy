@@ -12,7 +12,7 @@ from deepgram import DeepgramClient, PrerecordedOptions
 logger = logging.getLogger(__name__)
 
 # 一時音声ファイルの保存先
-AUDIO_DIR = Path(tempfile.gettempdir()) / "tellepy_audio"
+AUDIO_DIR = Path(tempfile.gettempdir()) / "telepy_audio"
 AUDIO_DIR.mkdir(exist_ok=True)
 
 

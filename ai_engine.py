@@ -1,4 +1,4 @@
-"""Claude API連携・返答生成モジュール - tellepy AIコアエンジン"""
+"""Claude API連携・返答生成モジュール - telepy AIコアエンジン"""
 
 from __future__ import annotations
 

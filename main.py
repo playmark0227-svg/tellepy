@@ -1,4 +1,4 @@
-"""tellepy - テレアポ代行AIシステム メインサーバー"""
+"""telepy - テレアポ代行AIシステム メインサーバー"""
 from __future__ import annotations
 
 import csv
@@ -52,18 +52,18 @@ DEFAULT_SCRIPT = SCRIPTS_DIR / "example_client.yaml"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("tellepy サーバー起動")
+    logger.info("telepy サーバー起動")
     yield
     try:
         _, _, _, _, cleanup_audio_files, _, _, _ = _import_call_modules()
         cleanup_audio_files()
     except ImportError:
         pass
-    logger.info("tellepy サーバー停止")
+    logger.info("telepy サーバー停止")
 
 
 app = FastAPI(
-    title="tellepy - テレアポ代行AIシステム",
+    title="telepy - テレアポ代行AIシステム",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -424,7 +424,7 @@ async def twilio_recording_status(request: Request):
 @app.get("/audio/{filename}")
 async def serve_audio(filename: str):
     import tempfile
-    AUDIO_DIR = Path(tempfile.gettempdir()) / "tellepy_audio"
+    AUDIO_DIR = Path(tempfile.gettempdir()) / "telepy_audio"
     filepath = AUDIO_DIR / filename
     if not filepath.exists():
         raise HTTPException(status_code=404, detail="音声ファイルが見つかりません")
@@ -440,7 +440,7 @@ async def list_sessions():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "tellepy"}
+    return {"status": "ok", "service": "telepy"}
 
 
 # --- ヘルパー ---

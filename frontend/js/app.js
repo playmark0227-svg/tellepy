@@ -1,4 +1,4 @@
-/* tellepy 管理画面 - メインアプリケーション */
+/* telepy 管理画面 - メインアプリケーション */
 
 // ===== API Helper =====
 async function api(method, url, data = null) {

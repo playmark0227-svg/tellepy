@@ -95,7 +95,7 @@ async def notify_error(error_message: str, context: str = "") -> bool:
         return False
 
     payload = {
-        "text": f"⚠️ tellepy エラー\n```{error_message}```\n{context}",
+        "text": f"⚠️ telepy エラー\n```{error_message}```\n{context}",
     }
 
     try:
