@@ -349,261 +349,218 @@ document.getElementById('script-form').addEventListener('submit', async function
   } catch (e) { toast('保存に失敗しました: ' + e.message, 'error'); }
 });
 
-// ===== Live Monitor =====
-var Monitor = {
-  activeSession: null,
-  timerInterval: null,
-  demoInterval: null,
-  demoStep: 0,
-  startTime: null,
+// ===== Mood / State helpers =====
+var MOODS = {
+  neutral: {emoji:'😐', label:'普通'}, curious: {emoji:'🤔', label:'興味'},
+  thinking: {emoji:'💭', label:'検討中'}, interested: {emoji:'😊', label:'前向き'},
+  positive: {emoji:'😄', label:'好感触'}, annoyed: {emoji:'😒', label:'迷惑'},
+  negative: {emoji:'😞', label:'消極的'},
+};
+var STATE_LABELS = {GREETING:'挨拶',QUALIFYING:'ヒアリング',PITCHING:'提案',CLOSING:'クロージング',OBJECTION:'断り返し',HANDOFF:'ハンドオフ',REJECTED:'拒否'};
 
-  // デモ用の会話シナリオ
-  demoScenarios: [
-    {
-      name: 'アポ獲得パターン',
-      steps: [
-        { state: 'GREETING', interest: 2, mood: 'neutral', strategy: '丁寧な導入',
-          role: 'assistant', text: 'お世話になっております。私、株式会社サンプルのAIアシスタントでございます。本日は経理業務の効率化についてご案内のお電話をさせていただきました。経理ご担当者様はいらっしゃいますでしょうか。' },
-        { state: 'GREETING', interest: 2, mood: 'neutral',
-          role: 'user', text: 'はい、経理の田中です。何でしょうか。' },
-        { state: 'QUALIFYING', interest: 3, mood: 'curious', strategy: 'SPIN質問法',
-          role: 'assistant', text: '田中様、お忙しいところ恐れ入ります。早速ですが、御社では毎月の経費精算にどれくらいのお時間をかけていらっしゃいますか？', contact_name: '田中' },
-        { state: 'QUALIFYING', interest: 3, mood: 'thinking',
-          role: 'user', text: 'うーん、そうですね...月末になると結構かかりますね。20時間くらいでしょうか。' },
-        { state: 'PITCHING', interest: 4, mood: 'interested', strategy: '課題深掘り → 解決策提示',
-          role: 'assistant', text: 'やはりそうでしたか。実は同規模の企業様でも同じお悩みを伺うことが多いのですが、弊社のクラウド経費精算ツール「ラクケイ」を導入されたA社様では、月20時間が6時間にまで短縮されました。領収書をスマホで撮影するだけでAIが自動仕分けいたします。' },
-        { state: 'PITCHING', interest: 4, mood: 'interested',
-          role: 'user', text: 'へぇ、それは便利そうですね。でもうちは弥生を使っているんですが、連携できるんですか？' },
-        { state: 'PITCHING', interest: 4, mood: 'positive', strategy: '技術的不安の解消',
-          role: 'assistant', text: 'はい、弥生とはワンクリックで連携可能でございます。既存のフローを一切変えることなく導入いただけます。他にもfreeeやマネーフォワードにも対応しております。' },
-        { state: 'CLOSING', interest: 5, mood: 'positive', strategy: 'クロージング',
-          role: 'assistant', text: 'ぜひ一度、15分ほどのオンラインデモで実際の画面をご覧いただければと思います。来週でしたら火曜と水曜、どちらがご都合よろしいでしょうか。' },
-        { state: 'CLOSING', interest: 5, mood: 'positive',
-          role: 'user', text: '水曜の14時なら空いていますよ。' },
-        { state: 'HANDOFF', interest: 5, mood: 'positive', strategy: '予約確定',
-          role: 'assistant', text: 'ありがとうございます！それでは来週水曜日14時にオンラインデモのご予約をいただきます。田中様のメールアドレスに詳細をお送りいたしますね。本日はお忙しい中お時間いただき誠にありがとうございました。', appointment: '2026-04-16 14:00' },
-      ]
-    },
-    {
-      name: '断り返し成功パターン',
-      steps: [
-        { state: 'GREETING', interest: 2, mood: 'neutral', strategy: '丁寧な導入',
-          role: 'assistant', text: 'お世話になっております。私、株式会社サンプルのAIアシスタントでございます。経費精算の効率化についてご案内させていただいております。' },
-        { state: 'GREETING', interest: 1, mood: 'annoyed',
-          role: 'user', text: 'あ、営業ですか？今ちょっと忙しいので...' },
-        { state: 'OBJECTION', interest: 2, mood: 'neutral', strategy: '共感 → 価値提示', objection: true,
-          role: 'assistant', text: 'お忙しいところ大変申し訳ございません。30秒だけお時間いただけますか。実は御社と同業の企業様で、月20時間の経費精算作業が6時間にまで削減できた事例がございまして。' },
-        { state: 'QUALIFYING', interest: 3, mood: 'curious',
-          role: 'user', text: '...30秒だけなら。具体的にどういうことですか？' },
-        { state: 'PITCHING', interest: 3, mood: 'thinking', strategy: '具体事例で信頼構築',
-          role: 'assistant', text: '領収書をスマホで撮影するだけでAIが自動仕分けするツールでして、OCR精度99.2%で手入力が完全にゼロになります。初期費用もゼロで、30日間無料でお試しいただけます。' },
-        { state: 'PITCHING', interest: 4, mood: 'interested',
-          role: 'user', text: 'なるほど...無料で試せるんですか。ちょっと資料を送ってもらえますか？' },
-        { state: 'CLOSING', interest: 4, mood: 'positive', strategy: '資料送付 → デモ提案',
-          role: 'assistant', text: 'もちろんでございます。資料と合わせて3分のデモ動画もお送りいたします。差し支えなければ、資料をご覧いただいた後、来週10分ほどオンラインで詳しくご説明させていただけないでしょうか。', contact_name: '鈴木' },
-        { state: 'HANDOFF', interest: 4, mood: 'positive',
-          role: 'user', text: 'そうですね、来週の木曜午前中ならいいですよ。', appointment: '2026-04-17 10:00' },
-      ]
-    }
-  ],
+// ===== Demo Scenarios =====
+var DEMO_SCENARIOS = [
+  { name:'アポ獲得',result:'appointed', steps:[
+    {state:'GREETING',interest:2,mood:'neutral',strategy:'丁寧な導入',role:'assistant',text:'お世話になっております。私、株式会社サンプルのAIアシスタントでございます。本日は経理業務の効率化についてご案内のお電話をさせていただきました。'},
+    {state:'GREETING',interest:2,mood:'neutral',role:'user',text:'はい、経理の田中です。何でしょうか。'},
+    {state:'QUALIFYING',interest:3,mood:'curious',strategy:'SPIN質問法',role:'assistant',text:'田中様、お忙しいところ恐れ入ります。御社では毎月の経費精算にどれくらいのお時間をかけていらっしゃいますか？',contact_name:'田中'},
+    {state:'QUALIFYING',interest:3,mood:'thinking',role:'user',text:'うーん、月末は結構かかりますね。20時間くらいでしょうか。'},
+    {state:'PITCHING',interest:4,mood:'interested',strategy:'課題深掘り → 解決策提示',role:'assistant',text:'弊社のクラウド経費精算ツール「ラクケイ」を導入されたA社様では、月20時間が6時間にまで短縮されました。'},
+    {state:'PITCHING',interest:4,mood:'interested',role:'user',text:'それは便利そうですね。弥生と連携できますか？'},
+    {state:'PITCHING',interest:4,mood:'positive',strategy:'技術的不安の解消',role:'assistant',text:'はい、弥生とはワンクリックで連携可能です。既存フローを変えずに導入いただけます。'},
+    {state:'CLOSING',interest:5,mood:'positive',strategy:'クロージング',role:'assistant',text:'15分ほどのオンラインデモで実際の画面をご覧いただけます。来週、火曜と水曜どちらがよろしいですか。'},
+    {state:'CLOSING',interest:5,mood:'positive',role:'user',text:'水曜の14時なら空いていますよ。'},
+    {state:'HANDOFF',interest:5,mood:'positive',strategy:'予約確定',role:'assistant',text:'ありがとうございます！来週水曜14時にオンラインデモご予約いただきます。',appointment:'2026-04-16 14:00'},
+  ]},
+  { name:'断り返し成功',result:'appointed', steps:[
+    {state:'GREETING',interest:2,mood:'neutral',strategy:'丁寧な導入',role:'assistant',text:'お世話になっております。経費精算の効率化についてご案内させていただいております。'},
+    {state:'GREETING',interest:1,mood:'annoyed',role:'user',text:'営業ですか？今ちょっと忙しいので...'},
+    {state:'OBJECTION',interest:2,mood:'neutral',strategy:'共感 → 価値提示',objection:true,role:'assistant',text:'お忙しいところ申し訳ございません。30秒だけお時間いただけますか。同業の企業様で月20時間の作業が6時間に削減できた事例がございます。'},
+    {state:'QUALIFYING',interest:3,mood:'curious',role:'user',text:'30秒だけなら。具体的にどういうことですか？'},
+    {state:'PITCHING',interest:3,mood:'thinking',strategy:'具体事例で信頼構築',role:'assistant',text:'領収書をスマホ撮影するだけでAIが自動仕分け。OCR精度99.2%で手入力ゼロ。30日間無料お試しいただけます。'},
+    {state:'PITCHING',interest:4,mood:'interested',role:'user',text:'無料で試せるんですか。資料を送ってもらえますか？',contact_name:'鈴木'},
+    {state:'CLOSING',interest:4,mood:'positive',strategy:'資料送付 → デモ提案',role:'assistant',text:'もちろんです。資料とデモ動画をお送りします。来週10分ほどオンラインでご説明させていただけないでしょうか。'},
+    {state:'HANDOFF',interest:4,mood:'positive',role:'user',text:'来週の木曜午前中ならいいですよ。',appointment:'2026-04-17 10:00'},
+  ]},
+  { name:'不在',result:'absent', steps:[
+    {state:'GREETING',interest:1,mood:'neutral',strategy:'丁寧な導入',role:'assistant',text:'お世話になっております。経理ご担当者様はいらっしゃいますでしょうか。'},
+    {state:'GREETING',interest:1,mood:'neutral',role:'user',text:'担当者は今外出しております。'},
+    {state:'REJECTED',interest:1,mood:'neutral',strategy:'再架電予約',role:'assistant',text:'かしこまりました。改めてお電話させていただきます。失礼いたします。'},
+  ]},
+  { name:'即断り',result:'rejected', steps:[
+    {state:'GREETING',interest:2,mood:'neutral',strategy:'丁寧な導入',role:'assistant',text:'お世話になっております。経費精算の効率化についてご案内させていただいております。'},
+    {state:'GREETING',interest:1,mood:'annoyed',role:'user',text:'結構です。今後一切お電話いただかないようお願いします。'},
+    {state:'OBJECTION',interest:1,mood:'negative',strategy:'丁寧な終話',objection:true,role:'assistant',text:'大変失礼いたしました。今後のご連絡は控えさせていただきます。'},
+    {state:'REJECTED',interest:0,mood:'negative',role:'assistant',text:'お忙しいところ失礼いたしました。'},
+  ]},
+];
 
-  reset: function() {
-    this.activeSession = null;
-    this.demoStep = 0;
-    if (this.timerInterval) clearInterval(this.timerInterval);
-    if (this.demoInterval) clearInterval(this.demoInterval);
-    this.timerInterval = null;
-    this.demoInterval = null;
-    this.startTime = null;
+// ===== Parallel Call Engine =====
+var CallEngine = {
+  sessions: {},   // id -> session data
+  nextId: 0,
+  viewingId: null, // 右パネルに表示中のID
+  tickInterval: null,
 
-    document.getElementById('monitor-pulse').className = 'monitor-pulse';
-    document.getElementById('monitor-status-label').textContent = '待機中';
-    document.getElementById('monitor-timer').textContent = '00:00';
-    document.getElementById('monitor-phone').textContent = '-';
-    document.getElementById('monitor-header').className = 'monitor-header';
-
-    // reset states
-    document.querySelectorAll('.state-node').forEach(function(n) {
-      n.classList.remove('active', 'passed');
-    });
-
-    // reset metrics
-    document.getElementById('interest-fill').style.width = '0%';
-    document.getElementById('interest-value').textContent = '-';
-    document.getElementById('metric-mood').textContent = '-';
-    document.getElementById('metric-turns').textContent = '0';
-    document.getElementById('metric-objections').textContent = '0 / 3';
-
-    // reset strategy
-    document.getElementById('monitor-strategy').innerHTML = '<div class="strategy-badge">待機中</div>';
-
-    // reset info
-    document.getElementById('info-name').textContent = '-';
-    document.getElementById('info-appo').textContent = '-';
-    document.getElementById('info-notes').textContent = '-';
-
-    // reset chat
-    document.getElementById('monitor-chat').innerHTML = '<div class="chat-empty">架電を開始すると会話がここに表示されます</div>';
-  },
-
-  startDemo: function(phone, scenarioIndex) {
-    this.reset();
-    var scenario = this.demoScenarios[scenarioIndex || 0];
-    this.activeSession = {
-      phone: phone,
-      scenario: scenario,
-      turnCount: 0,
-      objectionCount: 0,
-      conversationLog: [],
+  createSession: function(phone) {
+    var id = ++this.nextId;
+    var scenarioIndex = Math.floor(Math.random() * DEMO_SCENARIOS.length);
+    var scenario = DEMO_SCENARIOS[scenarioIndex];
+    this.sessions[id] = {
+      id: id, phone: phone, scenarioIndex: scenarioIndex,
+      state: 'GREETING', interest: 0, mood: 'neutral',
+      strategy: '', contact_name: '', appointment: '',
+      turnCount: 0, objectionCount: 0,
+      chatLog: [], stepIndex: 0, stepTimer: 0,
+      startTime: Date.now(), finished: false, result: null,
     };
-    this.startTime = Date.now();
-
-    // update header
-    document.getElementById('monitor-pulse').classList.add('live');
-    document.getElementById('monitor-status-label').textContent = '通話中';
-    document.getElementById('monitor-phone').textContent = phone;
-    document.getElementById('monitor-header').classList.add('active');
-
-    // start timer
-    var self = this;
-    this.timerInterval = setInterval(function() {
-      var elapsed = Math.floor((Date.now() - self.startTime) / 1000);
-      var min = String(Math.floor(elapsed / 60)).padStart(2, '0');
-      var sec = String(elapsed % 60).padStart(2, '0');
-      document.getElementById('monitor-timer').textContent = min + ':' + sec;
-    }, 1000);
-
-    // clear chat
-    document.getElementById('monitor-chat').innerHTML = '';
-
-    // start playing steps
-    this.demoStep = 0;
-    this.playNextStep();
+    // 自動的に最初のセッションをフォーカス
+    if (!this.viewingId) this.viewingId = id;
+    if (!this.tickInterval) {
+      var self = this;
+      this.tickInterval = setInterval(function(){ self.tick(); }, 500);
+    }
+    return id;
   },
 
-  playNextStep: function() {
+  tick: function() {
+    var now = Date.now();
+    var anyActive = false;
     var self = this;
-    var scenario = this.activeSession.scenario;
-    if (this.demoStep >= scenario.steps.length) {
-      // demo finished
-      document.getElementById('monitor-pulse').classList.remove('live');
-      document.getElementById('monitor-status-label').textContent = '通話終了';
-      if (this.timerInterval) clearInterval(this.timerInterval);
+    Object.keys(this.sessions).forEach(function(id) {
+      var s = self.sessions[id];
+      if (s.finished) return;
+      anyActive = true;
+      var scenario = DEMO_SCENARIOS[s.scenarioIndex];
+      if (s.stepIndex >= scenario.steps.length) {
+        s.finished = true;
+        s.result = scenario.result;
+        Calls.renderSessions();
+        if (parseInt(id) === self.viewingId) self.syncMonitor(s);
+        return;
+      }
+      // 各ステップのタイミング制御
+      var step = scenario.steps[s.stepIndex];
+      var delay = s.stepIndex === 0 ? 800 : (step.role === 'assistant' ? 2500 : 1800);
+      // ランダムなオフセットで並列感を出す
+      delay += Math.random() * 800;
+      s.stepTimer += 500;
+      if (s.stepTimer >= delay) {
+        self.applyStep(s, step);
+        s.stepIndex++;
+        s.stepTimer = 0;
+        Calls.renderSessions();
+        if (parseInt(id) === self.viewingId) self.syncMonitor(s);
+      }
+    });
+    // タイマー表示更新
+    if (this.viewingId && this.sessions[this.viewingId]) {
+      var vs = this.sessions[this.viewingId];
+      var elapsed = Math.floor((now - vs.startTime) / 1000);
+      document.getElementById('monitor-timer').textContent =
+        String(Math.floor(elapsed/60)).padStart(2,'0') + ':' + String(elapsed%60).padStart(2,'0');
+    }
+    if (!anyActive && this.tickInterval) {
+      // 全部終了してもインターバルは残す（タイマー表示のため）
+    }
+  },
+
+  applyStep: function(s, step) {
+    if (step.state) s.state = step.state;
+    if (step.interest !== undefined) s.interest = step.interest;
+    if (step.mood) s.mood = step.mood;
+    if (step.strategy) s.strategy = step.strategy;
+    if (step.contact_name) s.contact_name = step.contact_name;
+    if (step.appointment) s.appointment = step.appointment;
+    if (step.objection) s.objectionCount++;
+    if (step.role === 'user') s.turnCount++;
+    s.chatLog.push({role: step.role, text: step.text});
+  },
+
+  // 右パネルをセッションの状態に同期
+  syncMonitor: function(s) {
+    if (!s) {
+      // リセット
+      document.getElementById('monitor-pulse').className = 'monitor-pulse';
+      document.getElementById('monitor-status-label').textContent = '待機中';
+      document.getElementById('monitor-timer').textContent = '00:00';
+      document.getElementById('monitor-phone').textContent = '-';
+      document.getElementById('monitor-header').className = 'monitor-header';
+      document.querySelectorAll('.state-node').forEach(function(n){ n.classList.remove('active','passed'); });
+      document.getElementById('interest-fill').style.width = '0%';
+      document.getElementById('interest-value').textContent = '-';
+      document.getElementById('metric-mood').textContent = '-';
+      document.getElementById('metric-turns').textContent = '0';
+      document.getElementById('metric-objections').textContent = '0 / 3';
+      document.getElementById('monitor-strategy').innerHTML = '<div class="strategy-badge">待機中</div>';
+      document.getElementById('info-name').textContent = '-';
+      document.getElementById('info-appo').textContent = '-';
+      document.getElementById('info-notes').textContent = '-';
+      document.getElementById('monitor-chat').innerHTML = '<div class="chat-empty">架電を開始すると会話がここに表示されます</div>';
       return;
     }
 
-    var step = scenario.steps[this.demoStep];
-    var delay = step.role === 'assistant' ? 2500 : 1800;
-    if (this.demoStep === 0) delay = 800;
+    // Header
+    document.getElementById('monitor-header').className = 'monitor-header' + (s.finished ? '' : ' active');
+    document.getElementById('monitor-pulse').className = 'monitor-pulse' + (s.finished ? '' : ' live');
+    document.getElementById('monitor-status-label').textContent = s.finished ? '通話終了' : '通話中';
+    document.getElementById('monitor-phone').textContent = s.phone;
 
-    this.demoInterval = setTimeout(function() {
-      self.applyStep(step);
-      self.demoStep++;
-      self.playNextStep();
-    }, delay);
-  },
-
-  applyStep: function(step) {
-    // update state
-    if (step.state) {
-      this.updateState(step.state);
-    }
-
-    // update interest
-    if (step.interest) {
-      var pct = (step.interest / 5) * 100;
-      document.getElementById('interest-fill').style.width = pct + '%';
-      document.getElementById('interest-value').textContent = step.interest;
-    }
-
-    // update mood
-    if (step.mood) {
-      var moods = {
-        neutral: '😐 普通',
-        curious: '🤔 興味',
-        thinking: '💭 検討中',
-        interested: '😊 前向き',
-        positive: '😄 好感触',
-        annoyed: '😒 迷惑',
-        negative: '😞 消極的',
-      };
-      document.getElementById('metric-mood').textContent = moods[step.mood] || step.mood;
-    }
-
-    // update turn count
-    if (step.role === 'user') {
-      this.activeSession.turnCount++;
-      document.getElementById('metric-turns').textContent = this.activeSession.turnCount;
-    }
-
-    // update objection
-    if (step.objection) {
-      this.activeSession.objectionCount++;
-      document.getElementById('metric-objections').textContent = this.activeSession.objectionCount + ' / 3';
-    }
-
-    // update strategy
-    if (step.strategy) {
-      document.getElementById('monitor-strategy').innerHTML =
-        '<div class="strategy-badge active">' + step.strategy + '</div>';
-    }
-
-    // update contact_name
-    if (step.contact_name) {
-      document.getElementById('info-name').textContent = step.contact_name + '様';
-    }
-
-    // update appointment
-    if (step.appointment) {
-      document.getElementById('info-appo').textContent = step.appointment;
-    }
-
-    // add chat message
-    this.addChatMessage(step.role, step.text);
-  },
-
-  updateState: function(state) {
-    var mainStates = ['GREETING', 'QUALIFYING', 'PITCHING', 'CLOSING'];
-    var mainIndex = mainStates.indexOf(state);
-
-    document.querySelectorAll('.state-node').forEach(function(n) {
-      n.classList.remove('active');
-    });
-
-    // mark passed states
-    if (mainIndex >= 0) {
-      for (var i = 0; i < mainIndex; i++) {
-        var node = document.querySelector('.state-node[data-state="' + mainStates[i] + '"]');
-        if (node) node.classList.add('passed');
+    // State
+    var mainStates = ['GREETING','QUALIFYING','PITCHING','CLOSING'];
+    var mainIdx = mainStates.indexOf(s.state);
+    document.querySelectorAll('.state-node').forEach(function(n){ n.classList.remove('active','passed'); });
+    if (mainIdx >= 0) {
+      for (var i = 0; i < mainIdx; i++) {
+        var nd = document.querySelector('.state-node[data-state="'+mainStates[i]+'"]');
+        if (nd) nd.classList.add('passed');
       }
     }
+    var an = document.querySelector('.state-node[data-state="'+s.state+'"]');
+    if (an) an.classList.add('active');
 
-    // mark active state
-    var activeNode = document.querySelector('.state-node[data-state="' + state + '"]');
-    if (activeNode) activeNode.classList.add('active');
+    // Metrics
+    var pct = s.interest > 0 ? (s.interest / 5) * 100 : 0;
+    document.getElementById('interest-fill').style.width = pct + '%';
+    document.getElementById('interest-value').textContent = s.interest || '-';
+    var m = MOODS[s.mood];
+    document.getElementById('metric-mood').textContent = m ? m.emoji + ' ' + m.label : '-';
+    document.getElementById('metric-turns').textContent = s.turnCount;
+    document.getElementById('metric-objections').textContent = s.objectionCount + ' / 3';
+
+    // Strategy
+    document.getElementById('monitor-strategy').innerHTML = s.strategy
+      ? '<div class="strategy-badge active">' + s.strategy + '</div>'
+      : '<div class="strategy-badge">待機中</div>';
+
+    // Info
+    document.getElementById('info-name').textContent = s.contact_name ? s.contact_name + '様' : '-';
+    document.getElementById('info-appo').textContent = s.appointment || '-';
+    document.getElementById('info-notes').textContent = '-';
+
+    // Chat
+    var chat = document.getElementById('monitor-chat');
+    chat.innerHTML = s.chatLog.map(function(msg) {
+      var isAI = msg.role === 'assistant';
+      return '<div class="chat-msg ' + (isAI?'ai':'user') + '">' +
+        '<div class="chat-avatar '+(isAI?'ai':'user')+'">'+(isAI?'🤖':'👤')+'</div>' +
+        '<div class="chat-bubble"><div class="chat-role '+(isAI?'ai':'')+'">'+(isAI?'AI':'相手')+'</div>' +
+        '<div class="chat-text">'+msg.text+'</div></div></div>';
+    }).join('');
+    chat.scrollTop = chat.scrollHeight;
   },
 
-  addChatMessage: function(role, text) {
-    var chat = document.getElementById('monitor-chat');
-    var isAI = role === 'assistant';
-    var div = document.createElement('div');
-    div.className = 'chat-msg ' + (isAI ? 'ai' : 'user');
-    div.innerHTML =
-      '<div class="chat-avatar ' + (isAI ? 'ai' : 'user') + '">' + (isAI ? '🤖' : '👤') + '</div>' +
-      '<div class="chat-bubble">' +
-        '<div class="chat-role ' + (isAI ? 'ai' : '') + '">' + (isAI ? 'AI' : '相手') + '</div>' +
-        '<div class="chat-text">' + text + '</div>' +
-      '</div>';
-    chat.appendChild(div);
-    chat.scrollTop = chat.scrollHeight;
-  }
+  focusSession: function(id) {
+    this.viewingId = id;
+    var s = this.sessions[id];
+    this.syncMonitor(s || null);
+    Calls.renderSessions();
+  },
 };
 
 // ===== Calls =====
 var Calls = {
   csvFile: null,
-  activeSessions: [],
-  sessionIdCounter: 0,
 
   load: async function() {
     try {
@@ -620,64 +577,80 @@ var Calls = {
     var phone = document.getElementById('call-phone').value.trim();
     if (!phone) { toast('電話番号を入力してください', 'error'); return; }
 
-    // ランダムにシナリオを選択
-    var scenarioIndex = Math.floor(Math.random() * Monitor.demoScenarios.length);
-
-    // セッションを追加
-    var sessionId = ++this.sessionIdCounter;
-    var session = {
-      id: sessionId,
-      phone: phone,
-      state: 'GREETING',
-      startTime: Date.now(),
-      scenarioIndex: scenarioIndex,
-    };
-    this.activeSessions.push(session);
+    var id = CallEngine.createSession(phone);
+    CallEngine.focusSession(id);
     this.renderSessions();
 
     // Firestore に記録
     try {
       await col('call_history').add({
         called_at: new Date().toISOString(),
-        phone_number: phone,
-        contact_name: null,
-        status: 'in_progress',
-        appointment_datetime: null,
-        conversation_log: [{ role: 'assistant', content: 'AIアシスタントがご案内します。お世話になっております。' }],
+        phone_number: phone, contact_name: null,
+        status: 'in_progress', appointment_datetime: null,
+        conversation_log: [{role:'assistant',content:'AIアシスタントがご案内します。'}],
       });
     } catch (e) { /* ignore */ }
 
-    // ライブモニターを開始
-    Monitor.startDemo(phone, scenarioIndex);
     toast('架電を開始しました: ' + phone, 'info');
     document.getElementById('call-phone').value = '';
   },
 
   renderSessions: function() {
     var el = document.getElementById('call-sessions');
-    if (this.activeSessions.length === 0) {
-      el.innerHTML = '<p style="color:var(--gray-400);font-size:14px;">通話中のセッションはありません</p>';
+    var ids = Object.keys(CallEngine.sessions);
+    document.getElementById('session-count').textContent = ids.length + '件';
+
+    if (ids.length === 0) {
+      el.innerHTML = '<p class="sessions-empty" style="color:var(--gray-400);font-size:14px;">通話中のセッションはありません</p>';
       return;
     }
-    el.innerHTML = this.activeSessions.map(function(s) {
+
+    el.innerHTML = ids.map(function(id) {
+      var s = CallEngine.sessions[id];
       var elapsed = Math.floor((Date.now() - s.startTime) / 1000);
-      var min = String(Math.floor(elapsed / 60)).padStart(2, '0');
-      var sec = String(elapsed % 60).padStart(2, '0');
-      return '<div class="session-item" onclick="Calls.selectSession(' + s.id + ')">' +
-        '<div class="session-phone">' + s.phone + '</div>' +
-        '<div class="session-meta">' +
-          '<span class="session-state">' + s.state + '</span>' +
-          '<span class="session-time">' + min + ':' + sec + '</span>' +
+      var min = String(Math.floor(elapsed/60)).padStart(2,'0');
+      var sec = String(elapsed%60).padStart(2,'0');
+      var moodInfo = MOODS[s.mood] || {emoji:'😐',label:'普通'};
+      var stateLabel = STATE_LABELS[s.state] || s.state;
+      var selected = parseInt(id) === CallEngine.viewingId;
+      var interestPct = s.interest > 0 ? (s.interest / 5) * 100 : 0;
+
+      // ステータスの色
+      var stateClass = 'badge-info';
+      if (s.state === 'HANDOFF') stateClass = 'badge-ok';
+      else if (s.state === 'REJECTED') stateClass = 'badge-ng';
+      else if (s.state === 'OBJECTION') stateClass = 'badge-warn';
+
+      // 結果バッジ
+      var resultBadge = '';
+      if (s.finished) {
+        var rMap = {appointed:'badge-ok',rejected:'badge-ng',absent:'badge-warn'};
+        var rLabel = {appointed:'アポ獲得',rejected:'断り',absent:'不在'};
+        resultBadge = '<span class="badge '+(rMap[s.result]||'badge-info')+'">'+(rLabel[s.result]||s.result)+'</span>';
+      }
+
+      return '<div class="session-card' + (selected ? ' selected' : '') + (s.finished ? ' finished' : '') + '" onclick="CallEngine.focusSession('+id+')">' +
+        '<div class="session-card-top">' +
+          '<div class="session-card-phone">' +
+            '<span class="session-pulse '+(s.finished?'off':'on')+'"></span>' +
+            s.phone +
+          '</div>' +
+          '<div class="session-card-timer">' + min + ':' + sec + '</div>' +
         '</div>' +
+        '<div class="session-card-mid">' +
+          '<span class="badge '+stateClass+'" style="font-size:11px">' + stateLabel + '</span>' +
+          resultBadge +
+          '<span style="font-size:14px">' + moodInfo.emoji + '</span>' +
+          (s.contact_name ? '<span class="session-contact">'+s.contact_name+'様</span>' : '') +
+        '</div>' +
+        '<div class="session-card-bar">' +
+          '<div class="session-interest-label">関心度</div>' +
+          '<div class="session-interest-track"><div class="session-interest-fill" style="width:'+interestPct+'%"></div></div>' +
+          '<div class="session-interest-val">' + (s.interest || '-') + '</div>' +
+        '</div>' +
+        (s.strategy ? '<div class="session-card-strategy">'+s.strategy+'</div>' : '') +
       '</div>';
     }).join('');
-  },
-
-  selectSession: function(id) {
-    var session = this.activeSessions.find(function(s) { return s.id === id; });
-    if (session) {
-      Monitor.startDemo(session.phone, session.scenarioIndex);
-    }
   },
 
   handleDrop: function(e) {
@@ -713,17 +686,11 @@ var Calls = {
         var cols = lines[i].split(',');
         var phone = (cols[0] || '').trim();
         if (!phone) continue;
-        await col('call_history').add({
-          called_at: new Date().toISOString(),
-          phone_number: phone,
-          contact_name: null,
-          status: 'in_progress',
-          appointment_datetime: null,
-          conversation_log: [],
-        });
+        CallEngine.createSession(phone);
         count++;
       }
-      toast('一括架電開始（デモ）: ' + count + '件', 'info');
+      Calls.renderSessions();
+      toast('一括架電開始: ' + count + '件', 'info');
       Calls.clearCsv();
     };
     reader.readAsText(this.csvFile);
