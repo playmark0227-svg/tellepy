@@ -441,28 +441,29 @@ var CallEngine = {
       }
       // 各ステップのタイミング制御
       var step = scenario.steps[s.stepIndex];
-      var delay = s.stepIndex === 0 ? 800 : (step.role === 'assistant' ? 2500 : 1800);
-      // ランダムなオフセットで並列感を出す
-      delay += Math.random() * 800;
+      // delayTargetは一度だけ計算してセッションに保持
+      if (!s.delayTarget) {
+        var base = s.stepIndex === 0 ? 800 : (step.role === 'assistant' ? 2500 : 1800);
+        s.delayTarget = base + Math.floor(Math.random() * 800);
+      }
       s.stepTimer += 500;
-      if (s.stepTimer >= delay) {
+      if (s.stepTimer >= s.delayTarget) {
         self.applyStep(s, step);
         s.stepIndex++;
         s.stepTimer = 0;
-        Calls.renderSessions();
+        s.delayTarget = null; // 次のステップで再計算
         if (parseInt(id) === self.viewingId) self.syncMonitor(s);
       }
     });
-    // タイマー表示更新
+    // タイマー表示更新（常に）
     if (this.viewingId && this.sessions[this.viewingId]) {
       var vs = this.sessions[this.viewingId];
       var elapsed = Math.floor((now - vs.startTime) / 1000);
       document.getElementById('monitor-timer').textContent =
         String(Math.floor(elapsed/60)).padStart(2,'0') + ':' + String(elapsed%60).padStart(2,'0');
     }
-    if (!anyActive && this.tickInterval) {
-      // 全部終了してもインターバルは残す（タイマー表示のため）
-    }
+    // セッションカードのタイマーも毎秒更新
+    Calls.renderSessions();
   },
 
   applyStep: function(s, step) {
