@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>tellepy - テレアポ代行AI管理画面</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="toast-container" id="toasts"></div>
+
+<div class="app-layout">
+  <!-- ===== Sidebar ===== -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <h1>tellepy</h1>
+      <span>テレアポ代行AIシステム</span>
+    </div>
+    <nav class="sidebar-nav">
+      <a class="nav-item active" data-page="dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        ダッシュボード
+      </a>
+      <a class="nav-item" data-page="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        API設定
+      </a>
+      <a class="nav-item" data-page="scripts">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        スクリプト管理
+      </a>
+      <a class="nav-item" data-page="calls">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
+        架電管理
+      </a>
+      <a class="nav-item" data-page="history">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        通話履歴
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      tellepy v1.0.0 (Preview)
+    </div>
+  </aside>
+
+  <!-- ===== Main ===== -->
+  <div class="main-content">
+
+    <!-- ========== Dashboard ========== -->
+    <div id="page-dashboard" class="page">
+      <div class="page-header">
+        <h2>ダッシュボード</h2>
+        <p>システムの状態と本日の実績を確認できます</p>
+      </div>
+      <div class="page-body">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="label">本日の架電数</div>
+            <div class="value" id="stat-total">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">アポ獲得</div>
+            <div class="value" id="stat-appointed" style="color:var(--success)">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">通話中</div>
+            <div class="value" id="stat-active" style="color:var(--primary)">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">成功率</div>
+            <div class="value" id="stat-rate">-</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">接続ステータス</div>
+          <div class="status-grid" id="status-grid"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">アクティブ通話</div>
+          <div id="active-calls-table">
+            <p style="color:var(--gray-400);font-size:14px;">現在通話中のセッションはありません</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== Settings ========== -->
+    <div id="page-settings" class="page hidden">
+      <div class="page-header">
+        <h2>API設定</h2>
+        <p>各サービスのAPIキーと接続情報を管理します</p>
+      </div>
+      <div class="page-body">
+        <form id="settings-form" autocomplete="off">
+          <div class="card">
+            <div class="card-title">Twilio（通話）</div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Account SID</label>
+                <input type="text" name="twilio_account_sid" placeholder="ACxxxxxxxx">
+              </div>
+              <div class="form-group">
+                <label>Auth Token</label>
+                <input type="password" name="twilio_auth_token" placeholder="シークレットトークン">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>発信用電話番号（E.164形式）</label>
+              <input type="text" name="twilio_phone_number" placeholder="+8150XXXXXXXX">
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Deepgram（音声認識）</div>
+            <div class="form-group">
+              <label>API Key</label>
+              <input type="password" name="deepgram_api_key" placeholder="APIキー">
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">ElevenLabs（音声合成）</div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>API Key</label>
+                <input type="password" name="elevenlabs_api_key" placeholder="APIキー">
+              </div>
+              <div class="form-group">
+                <label>Voice ID</label>
+                <input type="text" name="elevenlabs_voice_id" placeholder="日本語音声のVoice ID">
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Anthropic（会話AI）</div>
+            <div class="form-group">
+              <label>API Key</label>
+              <input type="password" name="anthropic_api_key" placeholder="sk-ant-xxxxxxxx">
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Supabase（データベース）</div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Project URL</label>
+                <input type="text" name="supabase_url" placeholder="https://xxxxx.supabase.co">
+              </div>
+              <div class="form-group">
+                <label>Anon Key</label>
+                <input type="password" name="supabase_key" placeholder="eyJxxxxxxxx">
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Slack（通知）</div>
+            <div class="form-group">
+              <label>Webhook URL</label>
+              <input type="text" name="slack_webhook_url" placeholder="https://hooks.slack.com/services/xxx">
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">システム設定</div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>ベースURL（ngrok等）</label>
+                <input type="text" name="base_url" placeholder="https://xxxx.ngrok.io">
+              </div>
+              <div class="form-group">
+                <label>転送先電話番号（ハンドオフ用）</label>
+                <input type="text" name="forward_phone_number" placeholder="+819012345678">
+              </div>
+            </div>
+          </div>
+
+          <div class="btn-group">
+            <button type="submit" class="btn btn-primary">設定を保存</button>
+            <button type="button" class="btn btn-secondary" onclick="Settings.load()">変更を取消</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ========== Scripts ========== -->
+    <div id="page-scripts" class="page hidden">
+      <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <h2>スクリプト管理</h2>
+          <p>クライアントごとの架電スクリプトを作成・編集できます</p>
+        </div>
+        <button class="btn btn-primary" onclick="Scripts.showCreate()">+ 新規作成</button>
+      </div>
+      <div class="page-body">
+        <div class="script-list" id="script-list">
+          <div class="loading"><div class="spinner"></div>読み込み中...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== Calls ========== -->
+    <div id="page-calls" class="page hidden">
+      <div class="page-header">
+        <h2>架電管理</h2>
+        <p>電話番号を指定して架電、またはCSVで一括架電できます</p>
+      </div>
+      <div class="page-body">
+        <div class="card">
+          <div class="card-title">個別架電</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>電話番号（E.164形式）</label>
+              <input type="text" id="call-phone" placeholder="+819012345678">
+            </div>
+            <div class="form-group">
+              <label>使用スクリプト</label>
+              <select id="call-script"></select>
+            </div>
+          </div>
+          <button class="btn btn-success" onclick="Calls.initiate()">架電開始</button>
+        </div>
+
+        <div class="card">
+          <div class="card-title">CSV一括架電</div>
+          <div class="drop-zone" id="csv-drop"
+               ondragover="event.preventDefault();this.classList.add('dragover')"
+               ondragleave="this.classList.remove('dragover')"
+               ondrop="Calls.handleDrop(event)"
+               onclick="document.getElementById('csv-file').click()">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto;display:block;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <p>CSVファイルをドラッグ＆ドロップ</p>
+            <span class="hint">またはクリックして選択（形式: phone_number, company_name）</span>
+          </div>
+          <input type="file" id="csv-file" accept=".csv" style="display:none" onchange="Calls.handleFile(this.files[0])">
+          <div id="csv-preview" class="csv-preview hidden"></div>
+          <div id="csv-actions" class="btn-group hidden">
+            <button class="btn btn-success" onclick="Calls.batchCall()">一括架電開始</button>
+            <button class="btn btn-secondary" onclick="Calls.clearCsv()">クリア</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">通話中セッション</div>
+          <div id="call-sessions">
+            <p style="color:var(--gray-400);font-size:14px;">通話中のセッションはありません</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== History ========== -->
+    <div id="page-history" class="page hidden">
+      <div class="page-header">
+        <h2>通話履歴</h2>
+        <p>過去の架電ログを確認できます</p>
+      </div>
+      <div class="page-body">
+        <div class="card" style="padding:12px 16px;margin-bottom:16px;">
+          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+            <select id="history-filter-status" style="padding:6px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;">
+              <option value="">全てのステータス</option>
+              <option value="appointed">アポ獲得</option>
+              <option value="rejected">断り</option>
+              <option value="absent">不在</option>
+              <option value="handoff">ハンドオフ</option>
+            </select>
+            <button class="btn btn-sm btn-secondary" onclick="History.load()">検索</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>日時</th>
+                  <th>電話番号</th>
+                  <th>担当者名</th>
+                  <th>ステータス</th>
+                  <th>アポ日時</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="history-tbody">
+                <tr><td colspan="6" style="text-align:center;color:var(--gray-400);">データがありません</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ===== Script Edit Modal ===== -->
+<div id="script-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <h3 id="script-modal-title">スクリプト作成</h3>
+    <form id="script-form">
+      <input type="hidden" id="script-edit-name">
+      <div class="form-row">
+        <div class="form-group">
+          <label>ファイル名（英数字）</label>
+          <input type="text" id="script-filename" placeholder="my_client" required>
+        </div>
+        <div class="form-group">
+          <label>会社名</label>
+          <input type="text" id="script-client-name" placeholder="株式会社サンプル" required>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>商材名</label>
+          <input type="text" id="script-product" placeholder="クラウド経費精算ツール" required>
+        </div>
+        <div class="form-group">
+          <label>ターゲット</label>
+          <input type="text" id="script-target" placeholder="経理担当者" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>挨拶文</label>
+        <textarea id="script-greeting" rows="3" placeholder="お世話になっております..."></textarea>
+      </div>
+      <div class="form-group">
+        <label>商材説明（ピッチ）</label>
+        <textarea id="script-pitch" rows="4" placeholder="弊社では..."></textarea>
+      </div>
+      <div class="form-group">
+        <label>断り返しパターン</label>
+        <div id="objection-list"></div>
+        <button type="button" class="btn btn-sm btn-secondary" onclick="Scripts.addObjection()">+ パターン追加</button>
+      </div>
+      <div class="form-group">
+        <label>クロージング</label>
+        <textarea id="script-closing" rows="2" placeholder="デモのお時間を調整させていただければ..."></textarea>
+      </div>
+      <div class="form-group">
+        <label>終話</label>
+        <textarea id="script-farewell" rows="2" placeholder="お忙しい中お時間をいただき..."></textarea>
+      </div>
+      <div class="btn-group">
+        <button type="submit" class="btn btn-primary">保存</button>
+        <button type="button" class="btn btn-secondary" onclick="Scripts.closeModal()">キャンセル</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ===== Conversation Log Modal ===== -->
+<div id="log-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <h3>会話ログ</h3>
+    <div id="log-modal-body" style="max-height:400px;overflow-y:auto;"></div>
+    <div class="btn-group">
+      <button class="btn btn-secondary" onclick="document.getElementById('log-modal').classList.add('hidden')">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
