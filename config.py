@@ -15,8 +15,8 @@ ENV_MAP = {
     "elevenlabs_api_key": "ELEVENLABS_API_KEY",
     "elevenlabs_voice_id": "ELEVENLABS_VOICE_ID",
     "anthropic_api_key": "ANTHROPIC_API_KEY",
-    "supabase_url": "SUPABASE_URL",
-    "supabase_key": "SUPABASE_KEY",
+    "firebase_credentials_path": "FIREBASE_CREDENTIALS_PATH",
+    "firebase_project_id": "FIREBASE_PROJECT_ID",
     "slack_webhook_url": "SLACK_WEBHOOK_URL",
     "base_url": "BASE_URL",
     "forward_phone_number": "FORWARD_PHONE_NUMBER",
@@ -61,7 +61,7 @@ def get_masked_config() -> dict:
     config = load_config()
     secret_keys = {
         "twilio_auth_token", "deepgram_api_key", "elevenlabs_api_key",
-        "anthropic_api_key", "supabase_key", "slack_webhook_url",
+        "anthropic_api_key", "slack_webhook_url",
     }
     masked = {}
     for k, v in config.items():

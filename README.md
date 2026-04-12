@@ -52,31 +52,18 @@ cp .env.example .env
 | `ELEVENLABS_API_KEY` | ElevenLabs APIキー | [ElevenLabs](https://elevenlabs.io/) |
 | `ELEVENLABS_VOICE_ID` | ElevenLabs音声ID | ElevenLabs（日本語対応音声を選択） |
 | `ANTHROPIC_API_KEY` | Anthropic APIキー | [Anthropic Console](https://console.anthropic.com/) |
-| `SUPABASE_URL` | SupabaseプロジェクトURL | [Supabase](https://supabase.com/) |
-| `SUPABASE_KEY` | Supabase anon key | Supabase Dashboard |
+| `FIREBASE_CREDENTIALS_PATH` | Firebase認証JSONのパス | [Firebase Console](https://console.firebase.google.com/) |
+| `FIREBASE_PROJECT_ID` | FirebaseプロジェクトID | Firebase Console |
 | `SLACK_WEBHOOK_URL` | Slack Webhook URL | [Slack API](https://api.slack.com/messaging/webhooks) |
 
-### 3. Supabaseテーブルの作成
+### 3. Firebaseの設定
 
-Supabase SQLエディタで以下を実行してください。
+1. [Firebase Console](https://console.firebase.google.com/) でプロジェクトを作成
+2. **Firestore Database** を作成（本番モード）
+3. **プロジェクトの設定** → **サービスアカウント** → **新しい秘密鍵の生成**
+4. ダウンロードしたJSONファイルをプロジェクトルートに `firebase-credentials.json` として保存
 
-```sql
-CREATE TABLE call_logs (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    called_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    phone_number TEXT NOT NULL,
-    client_id TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('appointed', 'rejected', 'absent', 'handoff', 'in_progress', 'error')),
-    conversation_log JSONB DEFAULT '[]',
-    recording_url TEXT,
-    contact_name TEXT,
-    appointment_datetime TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX idx_call_logs_status ON call_logs(status);
-CREATE INDEX idx_call_logs_client_id ON call_logs(client_id);
-```
+Firestoreには `call_logs` コレクションが自動作成されます（テーブル定義不要）。
 
 ### 4. ngrokの設定（ローカル開発用）
 

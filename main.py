@@ -118,7 +118,7 @@ async def api_status():
         "Deepgram": is_configured("deepgram_api_key"),
         "ElevenLabs": is_configured("elevenlabs_api_key"),
         "Anthropic": is_configured("anthropic_api_key"),
-        "Supabase": is_configured("supabase_url") and is_configured("supabase_key"),
+        "Firebase": is_configured("firebase_credentials_path"),
         "Slack": is_configured("slack_webhook_url"),
     }
     today_calls = 0

@@ -66,7 +66,7 @@ const Store = {
   Store.set('settings', {
     twilio_account_sid: '', twilio_auth_token: '', twilio_phone_number: '',
     deepgram_api_key: '', elevenlabs_api_key: '', elevenlabs_voice_id: '',
-    anthropic_api_key: '', supabase_url: '', supabase_key: '',
+    anthropic_api_key: '', firebase_credentials_path: '', firebase_project_id: '',
     slack_webhook_url: '', base_url: '', forward_phone_number: '',
   });
 
@@ -122,7 +122,7 @@ var Dashboard = {
       'Deepgram': !!settings.deepgram_api_key,
       'ElevenLabs': !!settings.elevenlabs_api_key,
       'Anthropic': !!settings.anthropic_api_key,
-      'Supabase': !!(settings.supabase_url && settings.supabase_key),
+      'Firebase': !!settings.firebase_credentials_path,
       'Slack': !!settings.slack_webhook_url,
     };
     var grid = document.getElementById('status-grid');
