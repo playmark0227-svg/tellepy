@@ -214,48 +214,58 @@
         <div class="calls-layout">
           <!-- 左カラム: コントロール -->
           <div class="calls-left">
-            <div class="card">
-              <div class="card-title">個別架電</div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label>電話番号（E.164形式）</label>
-                  <input type="text" id="call-phone" placeholder="+819012345678">
-                </div>
-                <div class="form-group">
-                  <label>使用スクリプト</label>
-                  <select id="call-script"></select>
-                </div>
+            <!-- クイック架電バー -->
+            <div class="card quick-call-bar">
+              <div class="quick-call-row">
+                <input type="text" id="call-phone" placeholder="電話番号（+819012345678）" class="quick-call-input">
+                <select id="call-script" class="quick-call-script"></select>
+                <button class="btn btn-success" onclick="Calls.initiate()">架電開始</button>
               </div>
-              <button class="btn btn-success" onclick="Calls.initiate()">架電開始</button>
+              <div class="quick-call-actions">
+                <button class="btn btn-sm btn-secondary" onclick="document.getElementById('csv-file').click()">
+                  📁 CSV一括
+                </button>
+                <input type="file" id="csv-file" accept=".csv" style="display:none" onchange="Calls.handleFile(this.files[0])">
+                <button class="btn btn-sm btn-secondary" onclick="Calls.clearAll()">🗑 履歴クリア</button>
+              </div>
+              <div id="csv-preview" class="csv-preview hidden"></div>
+              <div id="csv-actions" class="btn-group hidden" style="margin-top:8px">
+                <button class="btn btn-sm btn-success" onclick="Calls.batchCall()">一括架電開始</button>
+                <button class="btn btn-sm btn-secondary" onclick="Calls.clearCsv()">クリア</button>
+              </div>
             </div>
 
+            <!-- 通話セッション一覧（最上部に配置） -->
             <div class="card">
+              <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+                <span>通話中セッション</span>
+                <div style="display:flex;gap:6px;align-items:center;">
+                  <span class="badge badge-info" id="session-count">0件</span>
+                  <span id="session-stats" style="font-size:11px;color:var(--gray-500);"></span>
+                </div>
+              </div>
+              <!-- フィルタータブ -->
+              <div class="session-filters" id="session-filters">
+                <button class="session-filter-btn active" data-filter="all" onclick="Calls.setFilter('all')">すべて</button>
+                <button class="session-filter-btn" data-filter="active" onclick="Calls.setFilter('active')">通話中</button>
+                <button class="session-filter-btn" data-filter="appointed" onclick="Calls.setFilter('appointed')">アポ獲得</button>
+                <button class="session-filter-btn" data-filter="rejected" onclick="Calls.setFilter('rejected')">断り/不在</button>
+              </div>
+              <div id="call-sessions">
+                <p class="sessions-empty" style="color:var(--gray-400);font-size:14px;">通話中のセッションはありません</p>
+              </div>
+            </div>
+
+            <!-- ドロップゾーン（折りたたみ可能） -->
+            <div class="card csv-drop-card hidden" id="csv-drop-card">
               <div class="card-title">CSV一括架電</div>
               <div class="drop-zone" id="csv-drop"
                    ondragover="event.preventDefault();this.classList.add('dragover')"
                    ondragleave="this.classList.remove('dragover')"
                    ondrop="Calls.handleDrop(event)"
                    onclick="document.getElementById('csv-file').click()">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto;display:block;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 <p>CSVファイルをドラッグ＆ドロップ</p>
-                <span class="hint">またはクリックして選択（形式: phone_number, company_name）</span>
-              </div>
-              <input type="file" id="csv-file" accept=".csv" style="display:none" onchange="Calls.handleFile(this.files[0])">
-              <div id="csv-preview" class="csv-preview hidden"></div>
-              <div id="csv-actions" class="btn-group hidden">
-                <button class="btn btn-success" onclick="Calls.batchCall()">一括架電開始</button>
-                <button class="btn btn-secondary" onclick="Calls.clearCsv()">クリア</button>
-              </div>
-            </div>
-
-            <!-- 通話セッション一覧 -->
-            <div class="card">
-              <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
-                <span>通話中セッション</span>
-                <span class="badge badge-info" id="session-count">0件</span>
-              </div>
-              <div id="call-sessions">
-                <p class="sessions-empty" style="color:var(--gray-400);font-size:14px;">通話中のセッションはありません</p>
+                <span class="hint">形式: phone_number, company_name</span>
               </div>
             </div>
           </div>

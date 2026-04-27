@@ -562,6 +562,7 @@ var CallEngine = {
 // ===== Calls =====
 var Calls = {
   csvFile: null,
+  filter: 'all',
 
   load: async function() {
     try {
@@ -572,6 +573,23 @@ var Calls = {
       }).join('');
     } catch (e) { /* ignore */ }
     this.renderSessions();
+  },
+
+  setFilter: function(filter) {
+    this.filter = filter;
+    document.querySelectorAll('.session-filter-btn').forEach(function(btn) {
+      btn.classList.toggle('active', btn.dataset.filter === filter);
+    });
+    this.renderSessions();
+  },
+
+  clearAll: function() {
+    if (!confirm('全セッションをクリアしますか？')) return;
+    CallEngine.sessions = {};
+    CallEngine.viewingId = null;
+    CallEngine.syncMonitor(null);
+    this.renderSessions();
+    toast('クリアしました', 'info');
   },
 
   initiate: async function() {
@@ -599,15 +617,51 @@ var Calls = {
   renderSessions: function() {
     var el = document.getElementById('call-sessions');
     var ids = Object.keys(CallEngine.sessions);
+    var allSessions = ids.map(function(id) { return CallEngine.sessions[id]; });
+
+    // 統計
+    var active = allSessions.filter(function(s){ return !s.finished; }).length;
+    var appointed = allSessions.filter(function(s){ return s.finished && s.result === 'appointed'; }).length;
+    var rejected = allSessions.filter(function(s){ return s.finished && (s.result === 'rejected' || s.result === 'absent'); }).length;
+
     document.getElementById('session-count').textContent = ids.length + '件';
+    var statsEl = document.getElementById('session-stats');
+    if (statsEl) {
+      var parts = [];
+      if (active > 0) parts.push('<span style="color:#22c55e">●</span> ' + active);
+      if (appointed > 0) parts.push('<span style="color:var(--primary)">✓</span> ' + appointed);
+      if (rejected > 0) parts.push('<span style="color:var(--gray-400)">✕</span> ' + rejected);
+      statsEl.innerHTML = parts.join(' &nbsp;');
+    }
 
     if (ids.length === 0) {
-      el.innerHTML = '<p class="sessions-empty" style="color:var(--gray-400);font-size:14px;">通話中のセッションはありません</p>';
+      el.innerHTML = '<p class="sessions-empty" style="color:var(--gray-400);font-size:14px;text-align:center;padding:20px 0;">通話中のセッションはありません</p>';
       return;
     }
 
-    el.innerHTML = ids.map(function(id) {
-      var s = CallEngine.sessions[id];
+    // フィルター適用
+    var filter = this.filter;
+    var filtered = allSessions.filter(function(s) {
+      if (filter === 'all') return true;
+      if (filter === 'active') return !s.finished;
+      if (filter === 'appointed') return s.finished && s.result === 'appointed';
+      if (filter === 'rejected') return s.finished && (s.result === 'rejected' || s.result === 'absent');
+      return true;
+    });
+
+    // ソート: 通話中 → 最近開始順
+    filtered.sort(function(a, b) {
+      if (a.finished !== b.finished) return a.finished ? 1 : -1;
+      return b.startTime - a.startTime;
+    });
+
+    if (filtered.length === 0) {
+      el.innerHTML = '<p class="sessions-empty" style="color:var(--gray-400);font-size:13px;text-align:center;padding:16px 0;">該当するセッションがありません</p>';
+      return;
+    }
+
+    el.innerHTML = filtered.map(function(s) {
+      var id = s.id;
       var elapsed = Math.floor((Date.now() - s.startTime) / 1000);
       var min = String(Math.floor(elapsed/60)).padStart(2,'0');
       var sec = String(elapsed%60).padStart(2,'0');
@@ -639,9 +693,8 @@ var Calls = {
           '<div class="session-card-timer">' + min + ':' + sec + '</div>' +
         '</div>' +
         '<div class="session-card-mid">' +
-          '<span class="badge '+stateClass+'" style="font-size:11px">' + stateLabel + '</span>' +
-          resultBadge +
-          '<span style="font-size:14px">' + moodInfo.emoji + '</span>' +
+          (s.finished ? resultBadge : '<span class="badge '+stateClass+'" style="font-size:11px">' + stateLabel + '</span>') +
+          '<span style="font-size:14px" title="'+moodInfo.label+'">' + moodInfo.emoji + '</span>' +
           (s.contact_name ? '<span class="session-contact">'+s.contact_name+'様</span>' : '') +
         '</div>' +
         '<div class="session-card-bar">' +
