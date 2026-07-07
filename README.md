@@ -47,13 +47,37 @@ GREETING → QUALIFYING → PITCHING → CLOSING → HANDOFF（アポ確定）
 4. **CSV出力**: 詳細CSV（会社名・所在地・資本金・従業員数・業種・URL）と、telepy一括架電用CSV
    （`phone_number, company_name`）を出力します
 
+### 検索モード
+
+リスト作成の検索元は3つから選べます。
+
+| モード | 説明 | 準備 |
+|---|---|---|
+| **ローカルCSV** | **PC内のCSVだけで検索（API不要）**。`data/` にCSVを置くだけ | CSVを1つ置く |
+| **gBizINFO API** | オンラインでgBizINFOに問い合わせる | APIトークン |
+| **デモ** | サンプルデータで画面確認 | なし |
+
+「自動」にすると、`data/` にCSVがあればローカル、無ければAPI、どちらも無ければデモ、の順で使います。
+
+#### ローカルCSV検索（おすすめ・APIを毎回叩かない）
+
+`data/` フォルダにCSVを置くと、**毎回APIを呼ばずPCの中だけ**で検索が完結します。
+gBizINFOの一括ダウンロードCSV（約1.7GB・資本金/従業員数/業種入り）を一度落として置くのが王道です。
+巨大ファイルでも1行ずつ処理するのでメモリを圧迫しません。列名は自動判別します。
+
+- データの入手先・対応する列名は [`data/README.md`](data/README.md) を参照
+- 同梱の `data/sample_companies.csv` ですぐ動作を試せます
+- **電話番号入りのCSVを置けば、架電用CSVにも電話番号がそのまま入ります**
+
 ### 使い方
 
-1. 設定画面で **gBizINFO APIトークン** を登録（[Web API利用申請](https://info.gbiz.go.jp/hojin/various_registration/form)で無料発行・商用可）
+1. 検索モードを選ぶ
+   - **ローカルCSV** の場合: `data/` にCSVを置く（[`data/README.md`](data/README.md) 参照）
+   - **gBizINFO API** の場合: 設定画面で **gBizINFO APIトークン** を登録（[Web API利用申請](https://info.gbiz.go.jp/hojin/various_registration/form)で無料発行・商用可）
 2. リスト作成タブで依頼文を貼り「条件を読み取る」→ 内容を確認して「リストを作成」
 3. できたCSVをダウンロード。架電用CSVはそのまま架電管理のCSV一括架電に読み込めます
 
-> トークン未設定でも「デモデータで試す」で画面の動作を確認できます。
+> どちらも未設定でも「デモ」モードで画面の動作を確認できます。
 
 ### データソースの注意点
 
@@ -70,9 +94,10 @@ GREETING → QUALIFYING → PITCHING → CLOSING → HANDOFF（アポ確定）
 | メソッド | パス | 説明 |
 |---|---|---|
 | POST | `/api/list/parse` | 依頼文を検索条件に構造化 |
-| POST | `/api/list/build` | リスト作成ジョブを非同期で開始（`job_id`を返す） |
+| POST | `/api/list/build` | リスト作成ジョブを非同期で開始（`mode`=auto/local/api/demo、`job_id`を返す） |
 | GET | `/api/list/jobs/{job_id}` | ジョブの進捗・結果（プレビュー）を取得 |
 | GET | `/api/list/jobs/{job_id}/export?fmt=detail\|call` | 完成リストをCSVでダウンロード |
+| GET | `/api/list/local-status` | ローカルCSV（PC内検索用）の設置状況を取得 |
 
 ## セットアップ手順
 

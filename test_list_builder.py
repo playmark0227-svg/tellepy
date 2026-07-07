@@ -8,10 +8,14 @@ import asyncio
 import csv
 import io
 
+import os
+import tempfile
+
 from list_builder import (
     Company,
     InquiryParser,
     ListBuilder,
+    LocalDataSource,
     SearchCriteria,
     normalize_prefecture,
     to_call_csv,
@@ -156,6 +160,91 @@ def test_target_count_guard():
     print("✓ 目標件数の上限ガード")
 
 
+SAMPLE_CSV = (
+    "法人番号,法人名,所在地,資本金,従業員数,業種\n"
+    "1,株式会社あおば工務店,東京都新宿区1-1,5000000,14,建設業\n"
+    "2,みなと不動産株式会社,神奈川県横浜市西区2-2,8000000,18,不動産取引業\n"
+    "3,株式会社おおて住宅,東京都千代田区3-3,300000000,800,総合建設業\n"  # 大企業→従業員/資本金で除外
+    "4,大阪ホーム株式会社,大阪府大阪市4-4,4000000,12,建設業\n"  # 地域外→除外
+    "5,株式会社かんとう住宅,東京都足立区5-5,,,建設業\n"  # 資本金・従業員数不明
+)
+
+
+def _write_csv(dirpath, name, content, encoding="utf-8"):
+    path = os.path.join(dirpath, name)
+    with open(path, "w", encoding=encoding, newline="") as f:
+        f.write(content)
+    return path
+
+
+def test_local_search_and_build():
+    with tempfile.TemporaryDirectory() as d:
+        _write_csv(d, "companies.csv", SAMPLE_CSV)
+        src = LocalDataSource(data_dir=d)
+        assert src.configured
+
+        criteria = SearchCriteria(
+            name_keywords=["工務店", "不動産", "住宅"],
+            prefectures=["東京都", "神奈川県"],
+            employee_min=10, employee_max=20, capital_max=10_000_000,
+            target_count=100,
+        )
+        # 1次フィルタ（社名キーワード＋都道府県）: 大阪ホームは地域外で落ちる
+        cand, scanned = src.search(criteria)
+        names = [c.name for c in cand]
+        assert scanned == 5
+        assert "株式会社あおば工務店" in names
+        assert "みなと不動産株式会社" in names
+        assert "大阪ホーム株式会社" not in names, "大阪は対象外"
+        assert "株式会社かんとう住宅" in names
+
+        # ビルド（従業員数レンジ・資本金上限を適用）
+        builder = ListBuilder(local=src)
+        companies, stats = asyncio.run(
+            builder.build(criteria, mode="local", include_unknown_employee=True, strict_capital=True)
+        )
+        got = [c.name for c in companies]
+        assert "株式会社あおば工務店" in got
+        assert "みなと不動産株式会社" in got
+        assert "株式会社おおて住宅" not in got, "従業員800名・資本金3億は範囲外で除外"
+        # 資本金不明＋従業員不明の会社は strict_capital で除外される
+        assert "株式会社かんとう住宅" not in got, "資本金未登録は厳密モードで除外"
+        assert stats.candidates == 4
+        print(f"✓ ローカルCSV検索とビルド（{len(companies)}社）")
+
+
+def test_local_column_autodetect_and_encoding():
+    # 英語ヘッダ + Shift_JIS でも読めること
+    csv_en = (
+        "corporate_number,name,location,capital_stock,employee_number\n"
+        "1,株式会社テスト工務店,東京都港区1-1,5000000,15\n"
+    )
+    with tempfile.TemporaryDirectory() as d:
+        _write_csv(d, "sjis.csv", csv_en, encoding="cp932")
+        src = LocalDataSource(data_dir=d)
+        criteria = SearchCriteria(name_keywords=["工務店"], prefectures=["東京都"], target_count=10)
+        cand, _ = src.search(criteria)
+        assert len(cand) == 1
+        assert cand[0].name == "株式会社テスト工務店"
+        assert cand[0].capital_stock == 5000000
+        assert cand[0].employee_number == 15
+        assert cand[0].prefecture == "東京都"
+        print("✓ 列名の自動判定 + Shift_JIS読み込み")
+
+
+def test_resolve_mode():
+    # ローカルデータが無ければ demo（gBizトークンも無い前提）
+    with tempfile.TemporaryDirectory() as d:
+        builder = ListBuilder(local=LocalDataSource(data_dir=d))
+        # トークン未設定なら auto は demo
+        assert builder.resolve_mode("auto") in ("demo", "api")
+        assert builder.resolve_mode("local") == "local"
+        # ローカルにCSVを置けば auto は local
+        _write_csv(d, "x.csv", SAMPLE_CSV)
+        assert builder.resolve_mode("auto") == "local"
+    print("✓ 検索モードの自動判定")
+
+
 if __name__ == "__main__":
     tests = [
         test_prefecture_normalization,
@@ -166,6 +255,9 @@ if __name__ == "__main__":
         test_demo_build,
         test_criteria_roundtrip,
         test_target_count_guard,
+        test_local_search_and_build,
+        test_local_column_autodetect_and_encoding,
+        test_resolve_mode,
     ]
     for t in tests:
         t()

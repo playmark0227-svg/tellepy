@@ -40,7 +40,15 @@ function navigate(page) {
     n.classList.toggle('active', n.dataset.page === page);
   });
   // Load page data
-  const loaders = { dashboard: Dashboard.load, settings: Settings.load, scripts: Scripts.load, listbuilder: ListBuilder.load, calls: Calls.load, history: History.load };
+  // 各モジュールの load を呼ぶ。メソッド内の this を保つためアロー関数で包む
+  const loaders = {
+    dashboard: () => Dashboard.load(),
+    settings: () => Settings.load(),
+    scripts: () => Scripts.load(),
+    listbuilder: () => ListBuilder.load(),
+    calls: () => Calls.load(),
+    history: () => History.load(),
+  };
   loaders[page]?.();
 }
 
@@ -265,8 +273,21 @@ const ListBuilder = {
   pollTimer: null,
   currentJob: null,
 
-  load() {
-    // 静的ページなので特別なロード処理は不要
+  async load() {
+    // ローカルCSVの設置状況を表示
+    try {
+      const st = await api('GET', '/list/local-status');
+      const el = document.getElementById('lb-local-status');
+      if (!el) return;
+      if (st.configured) {
+        const total = st.files.reduce((a, f) => a + f.size, 0);
+        el.textContent = `ローカルCSV: ${st.files.length}ファイル検出（${st.files.map(f => f.name).join(', ')} / 計${(total / 1048576).toFixed(1)}MB）`;
+        el.style.color = 'var(--success)';
+      } else {
+        el.textContent = `ローカルCSVなし（${st.data_dir}/ にCSVを置くとPC内検索が使えます）。未設定時はAPIまたはデモで動作します。`;
+        el.style.color = 'var(--gray-400)';
+      }
+    } catch (e) { /* ignore */ }
   },
 
   fillSample() {
@@ -324,10 +345,10 @@ const ListBuilder = {
     }
     const req = {
       criteria,
+      mode: document.getElementById('lb-mode').value,
       enrich: document.getElementById('lb-enrich').checked,
       include_unknown_employee: document.getElementById('lb-unknown').checked,
       strict_capital: document.getElementById('lb-strict-cap').checked,
-      demo: document.getElementById('lb-demo').checked,
       detail_budget: 1500,
     };
     try {
@@ -367,7 +388,9 @@ const ListBuilder = {
   renderProgress(job) {
     const p = job.progress || {};
     const el = document.getElementById('lb-progress-text');
-    if (p.phase === 'search') {
+    if (p.phase === 'local') {
+      el.textContent = `PC内のCSVを検索中... ${(p.scanned || 0).toLocaleString()}行を走査 / 該当 ${p.found || 0} 社`;
+    } else if (p.phase === 'search') {
       el.textContent = `検索中... 候補 ${p.found || 0} 社（${p.detail || ''}）`;
     } else if (p.phase === 'enrich') {
       el.textContent = `詳細情報を取得中... ${p.enriched || 0} / ${p.found || 0} 社`;
@@ -380,7 +403,8 @@ const ListBuilder = {
     document.getElementById('lb-progress-card').classList.add('hidden');
     document.getElementById('lb-result-card').classList.remove('hidden');
     const stats = job.stats || {};
-    document.getElementById('lb-result-title').textContent = `作成結果：${job.count} 社`;
+    const modeLbl = { local: 'ローカルCSV', api: 'gBizINFO API', demo: 'デモ' }[job.mode] || '';
+    document.getElementById('lb-result-title').textContent = `作成結果：${job.count} 社` + (modeLbl ? `（${modeLbl}）` : '');
 
     const statItems = [
       ['取得件数', job.count],
@@ -394,7 +418,7 @@ const ListBuilder = {
 
     const note = document.getElementById('lb-note');
     if (stats.demo) {
-      note.textContent = '⚠ これはデモデータです。実データを取得するには設定画面でgBizINFO APIトークンを登録してください。';
+      note.textContent = '⚠ これはデモデータです。PC内検索を使うにはdata/フォルダにCSVを置く、またはgBizINFO APIトークンを登録してください。';
       note.classList.remove('hidden');
     } else if ((stats.unknown_employee || 0) > 0) {
       note.textContent = 'ℹ 従業員数が不明な会社が含まれています（gBizINFOは小規模企業の従業員数が欠損しがちなため）。「従業員数不明を含める」を外すと除外できます。また電話番号はgBizINFOに含まれないため、架電用CSVの電話番号欄は空です。';

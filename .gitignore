@@ -4,5 +4,9 @@ __pycache__/
 .env
 config.json
 firebase-credentials.json
-data/
+# ローカル検索用データ本体（gBizINFO一括CSV等の巨大ファイル）は追跡しない。
+# ただしサンプルと説明ファイルだけは版管理する。
+data/*
+!data/README.md
+!data/sample_companies.csv
 .claude/

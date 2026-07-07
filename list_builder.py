@@ -21,6 +21,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field, asdict
+from pathlib import Path
 from typing import Awaitable, Callable, Optional
 
 import httpx
@@ -30,6 +31,25 @@ logger = logging.getLogger(__name__)
 GBIZ_BASE_URL = "https://api.info.gbiz.go.jp/hojin"
 GBIZ_SEARCH_MAX_PAGE = 10  # v2はpage 1-10まで
 GBIZ_SEARCH_MAX_LIMIT = 5000  # 1ページ最大件数
+
+# ローカルCSVを置くディレクトリ（APIを使わずPC内で検索するためのデータ）
+DATA_DIR = Path(os.environ.get("LOCAL_DATA_DIR", "data"))
+
+# ローカルCSVの列名 → 内部フィールドの対応表（大文字小文字・表記ゆれを吸収）。
+# gBizINFO一括ダウンロードCSV、国税庁 法人番号CSV、任意のCSVのいずれにも対応させる。
+_COLUMN_ALIASES = {
+    "corporate_number": ["法人番号", "corporate_number", "corporatenumber", "houjin_bangou", "法人番号(13桁)"],
+    "name": ["法人名", "商号又は名称", "商号", "名称", "会社名", "企業名", "name", "corporate_name", "company_name"],
+    "location": ["所在地", "本社所在地", "住所", "location", "address", "本店所在地"],
+    "postal_code": ["郵便番号", "postal_code", "postalcode", "zip"],
+    "capital_stock": ["資本金", "資本金(円)", "資本金額", "資本金（円）", "capital_stock", "capitalstock", "capital"],
+    "employee_number": ["従業員数", "従業員", "従業員数(人)", "従業員数（人）", "employee_number", "employeenumber", "employees"],
+    "industry": ["業種", "業種分類", "事業概要", "industry"],
+    "founding_year": ["設立年", "設立年月日", "創業年", "設立", "founding_year", "date_of_establishment"],
+    "representative_name": ["代表者名", "代表者", "representative_name", "representative"],
+    "company_url": ["url", "企業ホームページ", "ホームページ", "会社url", "company_url", "website", "ｕｒｌ"],
+    "phone_number": ["電話番号", "tel", "電話", "phone_number", "phone", "ｔｅｌ"],
+}
 
 # 都道府県名 → JIS X 0401 コード（gBizINFOのprefectureパラメータ用）
 PREFECTURE_CODES = {
@@ -445,6 +465,147 @@ def _prefecture_from_location(location: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# ローカルCSVデータソース（APIを使わずPC内で検索）
+# ---------------------------------------------------------------------------
+
+
+class LocalDataSource:
+    """ローカルに置いたCSVファイルを検索するデータソース。
+
+    APIを一切呼ばずにPC内だけで検索が完結する。巨大なCSV（gBizINFO一括
+    ダウンロードの基本情報は約1.7GB）でもメモリを食わないよう1行ずつ
+    ストリーミングで走査し、条件に合う行だけを集める。
+    """
+
+    def __init__(self, data_dir=None, paths=None) -> None:
+        self.data_dir = Path(data_dir) if data_dir else DATA_DIR
+        self.paths = [Path(p) for p in paths] if paths else None
+
+    def available_files(self) -> list[Path]:
+        if self.paths:
+            return [p for p in self.paths if p.exists()]
+        if self.data_dir.exists():
+            return sorted(p for p in self.data_dir.glob("*.csv"))
+        return []
+
+    @property
+    def configured(self) -> bool:
+        return len(self.available_files()) > 0
+
+    def search(
+        self,
+        criteria: "SearchCriteria",
+        *,
+        limit: int = 20000,
+        progress=None,
+    ) -> tuple[list["Company"], int]:
+        """社名キーワードと都道府県で1次フィルタして候補を集める。
+
+        資本金・従業員数の絞り込みは後段の _filter_and_rank に任せる
+        （APIモードのsearch/detailと同じ役割分担）。
+
+        Returns: (候補リスト, 走査した行数)
+        """
+        results: list[Company] = []
+        scanned = 0
+        keywords = criteria.name_keywords
+        prefs = set(criteria.prefectures)
+        for path in self.available_files():
+            for row in self._iter_rows(path):
+                scanned += 1
+                comp = self._row_to_company(row)
+                if not comp.name:
+                    continue
+                if keywords and not any(kw and kw in comp.name for kw in keywords):
+                    continue
+                if prefs:
+                    pref = comp.prefecture or _prefecture_from_location(comp.location)
+                    if pref not in prefs:
+                        continue
+                    comp.prefecture = pref
+                comp.match_reason = "ローカルCSV一致"
+                results.append(comp)
+                if len(results) >= limit:
+                    if progress:
+                        progress(scanned, len(results))
+                    return results, scanned
+                if progress and scanned % 5000 == 0:
+                    progress(scanned, len(results))
+        return results, scanned
+
+    def _iter_rows(self, path: Path):
+        f = _open_text_auto(path)
+        try:
+            reader = csv.DictReader(f)
+            if not reader.fieldnames:
+                return
+            colmap = self._build_colmap(reader.fieldnames)
+            self._active_colmap = colmap
+            for row in reader:
+                yield row
+        finally:
+            f.close()
+
+    def _build_colmap(self, fieldnames) -> dict:
+        norm = {}
+        for fn in fieldnames:
+            if fn is not None:
+                norm[_norm_header(fn)] = fn
+        colmap = {}
+        for canon, aliases in _COLUMN_ALIASES.items():
+            for a in aliases:
+                key = _norm_header(a)
+                if key in norm:
+                    colmap[canon] = norm[key]
+                    break
+        return colmap
+
+    def _row_to_company(self, row: dict) -> "Company":
+        colmap = getattr(self, "_active_colmap", {})
+
+        def get(field):
+            col = colmap.get(field)
+            return (row.get(col, "") or "").strip() if col else ""
+
+        location = get("location")
+        return Company(
+            corporate_number=get("corporate_number"),
+            name=get("name"),
+            location=location,
+            postal_code=get("postal_code"),
+            prefecture=_prefecture_from_location(location),
+            capital_stock=_as_int(get("capital_stock")),
+            employee_number=_as_int(get("employee_number")),
+            industry=get("industry"),
+            founding_year=_as_year(get("founding_year")),
+            representative_name=get("representative_name"),
+            company_url=get("company_url"),
+            phone_number=get("phone_number"),
+        )
+
+
+def _open_text_auto(path: Path):
+    """日本語CSVによくあるUTF-8(BOM付)とShift_JIS(cp932)を自動判別して開く。"""
+    for enc in ("utf-8-sig", "cp932", "utf-8"):
+        try:
+            f = open(path, encoding=enc, newline="")
+            f.read(8192)
+            f.seek(0)
+            return f
+        except UnicodeDecodeError:
+            try:
+                f.close()
+            except Exception:
+                pass
+            continue
+    return open(path, encoding="utf-8", errors="replace", newline="")
+
+
+def _norm_header(name: str) -> str:
+    return (name or "").replace("﻿", "").replace(" ", "").replace("　", "").strip().lower()
+
+
+# ---------------------------------------------------------------------------
 # リストビルダー本体
 # ---------------------------------------------------------------------------
 
@@ -463,13 +624,29 @@ class BuildStats:
 class ListBuilder:
     """検索条件から企業リストを組み立てる"""
 
-    def __init__(self, gbiz: Optional[GBizClient] = None) -> None:
+    def __init__(
+        self,
+        gbiz: Optional[GBizClient] = None,
+        local: Optional[LocalDataSource] = None,
+    ) -> None:
         self.gbiz = gbiz or GBizClient()
+        self.local = local or LocalDataSource()
+
+    def resolve_mode(self, mode: str) -> str:
+        """"auto" のとき、ローカルCSV→API→デモ の順に使えるものを選ぶ。"""
+        if mode and mode != "auto":
+            return mode
+        if self.local.configured:
+            return "local"
+        if self.gbiz.configured:
+            return "api"
+        return "demo"
 
     async def build(
         self,
         criteria: SearchCriteria,
         *,
+        mode: str = "auto",
         enrich: bool = True,
         detail_budget: int = 1500,
         include_unknown_employee: bool = True,
@@ -480,14 +657,16 @@ class ListBuilder:
         """リストを作成する。
 
         Args:
-            enrich: 各社の詳細API（資本金・従業員数・業種・URL）を取得するか
+            mode: "auto"|"local"|"api"|"demo"。localはPC内のCSVだけで検索（API不要）
+            enrich: （APIモード用）各社の詳細を取得して従業員数等を埋めるか
             detail_budget: 詳細取得する最大件数（レート制限対策の上限）
             include_unknown_employee: 従業員数が不明な会社をリストに含めるか
-            strict_capital: 検索時にサーバ側で資本金上限フィルタをかけるか
-                （Trueで精度重視。資本金未登録の小規模企業は除外される）
-            demo: APIを使わずデモ用サンプルデータを生成する
+            strict_capital: 資本金上限で厳密に絞るか（資本金未登録を除外する）
+            demo: 強制的にデモ用サンプルデータを生成する
         """
-        if demo or not self.gbiz.configured:
+        resolved = "demo" if demo else self.resolve_mode(mode)
+
+        if resolved == "demo":
             companies = _demo_companies(criteria)
             stats = BuildStats(
                 candidates=len(companies), matched=len(companies), demo=True
@@ -495,6 +674,14 @@ class ListBuilder:
             if progress:
                 await progress({"phase": "done", "found": len(companies), "target": criteria.target_count, "demo": True})
             return companies[: criteria.target_count], stats
+
+        if resolved == "local":
+            return await self._build_local(
+                criteria,
+                include_unknown_employee=include_unknown_employee,
+                strict_capital=strict_capital,
+                progress=progress,
+            )
 
         stats = BuildStats()
         candidates: dict[str, Company] = {}
@@ -579,12 +766,75 @@ class ListBuilder:
             })
         return result, stats
 
+    async def _build_local(
+        self,
+        criteria: SearchCriteria,
+        *,
+        include_unknown_employee: bool,
+        strict_capital: bool,
+        progress: Optional[ProgressCallback] = None,
+    ) -> tuple[list[Company], BuildStats]:
+        """PC内のローカルCSVだけで検索する（API不要）。"""
+        stats = BuildStats()
+        candidate_ceiling = min(max(criteria.target_count * 5, 2000), 200000)
+
+        # 別スレッドで走査しつつ、進捗はティッカーで定期的に通知する
+        state = {"scanned": 0, "found": 0, "done": False}
+
+        def sync_cb(scanned, found):
+            state["scanned"] = scanned
+            state["found"] = found
+
+        async def ticker():
+            while not state["done"]:
+                if progress:
+                    await progress({
+                        "phase": "local",
+                        "scanned": state["scanned"],
+                        "found": state["found"],
+                        "target": criteria.target_count,
+                    })
+                await asyncio.sleep(0.5)
+
+        tick = asyncio.create_task(ticker())
+        try:
+            cand_list, scanned = await asyncio.to_thread(
+                self.local.search, criteria, limit=candidate_ceiling, progress=sync_cb
+            )
+        finally:
+            state["done"] = True
+            await tick
+
+        stats.candidates = len(cand_list)
+        # ローカルCSVは属性が揃っているので詳細取得(enrich)は不要
+        stats.enriched = sum(1 for c in cand_list if c.employee_number is not None)
+
+        selected = self._filter_and_rank(
+            cand_list,
+            criteria,
+            include_unknown_employee=include_unknown_employee,
+            exclude_unknown_capital=strict_capital,
+        )
+        stats.matched = len(selected)
+        stats.unknown_employee = sum(1 for c in selected if c.employee_number is None)
+        result = selected[: criteria.target_count]
+        if progress:
+            await progress({
+                "phase": "done",
+                "found": len(result),
+                "matched": stats.matched,
+                "scanned": scanned,
+                "target": criteria.target_count,
+            })
+        return result, stats
+
     def _filter_and_rank(
         self,
         companies: list[Company],
         criteria: SearchCriteria,
         *,
         include_unknown_employee: bool,
+        exclude_unknown_capital: bool = False,
     ) -> list[Company]:
         emp_min, emp_max = criteria.employee_min, criteria.employee_max
         cap_min, cap_max = criteria.capital_min, criteria.capital_max
@@ -596,6 +846,9 @@ class ListBuilder:
                     continue
                 if cap_min is not None and c.capital_stock < cap_min:
                     continue
+            elif exclude_unknown_capital and (cap_max is not None or cap_min is not None):
+                # 資本金が未登録の会社を除外（厳密モード）
+                continue
             # 従業員数フィルタ
             if c.employee_number is not None:
                 if emp_min is not None and c.employee_number < emp_min:
@@ -774,6 +1027,14 @@ def _as_int(value) -> Optional[int]:
         return int(float(value))
     except (ValueError, TypeError):
         return None
+
+
+def _as_year(value) -> Optional[int]:
+    """"2000-01-01" や "2000年" 等から4桁の年を取り出す。"""
+    if value is None or value == "":
+        return None
+    m = re.search(r"(\d{4})", str(value))
+    return int(m.group(1)) if m else None
 
 
 def _as_str_list(value) -> list[str]:

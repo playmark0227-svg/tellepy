@@ -305,6 +305,7 @@ class ParseRequest(BaseModel):
 
 class BuildRequest(BaseModel):
     criteria: dict
+    mode: str = "auto"  # auto | local | api | demo
     enrich: bool = True
     detail_budget: int = 1500
     include_unknown_employee: bool = True
@@ -323,19 +324,21 @@ async def api_list_parse(req: ParseRequest):
 
 async def _run_build_job(job_id: str, req: BuildRequest):
     from list_builder import (
-        SearchCriteria, GBizClient, ListBuilder, to_csv, to_call_csv,
+        SearchCriteria, GBizClient, LocalDataSource, ListBuilder, to_csv, to_call_csv,
     )
     job = list_jobs[job_id]
     try:
         criteria = SearchCriteria.from_dict(req.criteria)
-        builder = ListBuilder(GBizClient())
+        builder = ListBuilder(GBizClient(), LocalDataSource())
 
         async def on_progress(p: dict):
             job["progress"] = p
 
         job["status"] = "running"
+        job["mode"] = builder.resolve_mode("demo" if req.demo else req.mode)
         companies, stats = await builder.build(
             criteria,
+            mode=req.mode,
             enrich=req.enrich,
             detail_budget=req.detail_budget,
             include_unknown_employee=req.include_unknown_employee,
@@ -385,11 +388,25 @@ async def api_list_job(job_id: str, preview: int = 50):
     return {
         "id": job["id"],
         "status": job["status"],
+        "mode": job.get("mode"),
         "progress": job.get("progress", {}),
         "stats": job.get("stats", {}),
         "count": job.get("count", 0),
         "error": job.get("error"),
         "companies": job.get("companies", [])[:preview],
+    }
+
+
+@app.get("/api/list/local-status")
+async def api_list_local_status():
+    """ローカルCSV（PC内検索用データ）の設置状況を返す"""
+    from list_builder import LocalDataSource
+    src = LocalDataSource()
+    files = src.available_files()
+    return {
+        "configured": len(files) > 0,
+        "data_dir": str(src.data_dir),
+        "files": [{"name": p.name, "size": p.stat().st_size} for p in files],
     }
 
 

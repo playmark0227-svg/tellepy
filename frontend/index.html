@@ -276,23 +276,30 @@
             </div>
           </div>
 
+          <div class="form-group">
+            <label>検索モード</label>
+            <select id="lb-mode">
+              <option value="auto">自動（ローカルCSVがあれば優先）</option>
+              <option value="local">ローカルCSV（PC内で検索・API不要）</option>
+              <option value="api">gBizINFO API（オンライン検索）</option>
+              <option value="demo">デモデータ</option>
+            </select>
+            <span class="hint" id="lb-local-status" style="display:block;margin-top:6px;color:var(--gray-400);font-size:12px;"></span>
+          </div>
+
           <div class="card" style="background:var(--gray-50, #f9fafb);box-shadow:none;border:1px solid var(--gray-200);margin-bottom:16px;">
             <div class="card-title" style="font-size:13px;">詳細オプション</div>
             <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
               <input type="checkbox" id="lb-enrich" checked style="width:auto;">
-              各社の従業員数・業種・URLを詳細APIで取得する（精度↑・時間↑）
+              （APIモード時）各社の従業員数・業種・URLを詳細APIで取得する（精度↑・時間↑）
             </label>
             <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
               <input type="checkbox" id="lb-unknown" checked style="width:auto;">
               従業員数が不明な会社もリストに含める（件数確保のため推奨）
             </label>
-            <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
               <input type="checkbox" id="lb-strict-cap" checked style="width:auto;">
               資本金の上限で厳密に絞る（外すと資本金未登録の会社も対象に）
-            </label>
-            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
-              <input type="checkbox" id="lb-demo" style="width:auto;">
-              デモデータで試す（gBizINFOトークン未設定でも動作確認できます）
             </label>
           </div>
 
