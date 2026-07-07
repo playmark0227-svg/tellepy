@@ -1,0 +1,11 @@
+# リスト作成（企業リストビルダー / Web自動探索）だけを使う場合の最小依存。
+# テレアポ通話機能（Twilio/Deepgram/ElevenLabs/Firebase）は不要なので含めない。
+#   pip install -r requirements-list.txt
+fastapi==0.115.6
+uvicorn==0.34.0
+httpx==0.28.1
+python-dotenv==1.0.1
+pyyaml==6.0.2
+python-multipart==0.0.20
+# 任意: 依頼文の解釈をAIで賢くする（未設定でもキーワード抽出で動作）
+anthropic==0.42.0

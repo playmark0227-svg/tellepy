@@ -636,4 +636,8 @@ async def _save_session(session):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    # reload=True は watchfiles 追加インストールが必要なので既定オフ。
+    # 開発中にホットリロードしたい場合だけ RELOAD=1 python main.py で有効化。
+    reload = os.environ.get("RELOAD", "").lower() in ("1", "true", "yes")
+    port = int(os.environ.get("PORT", "8000"))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=reload)
