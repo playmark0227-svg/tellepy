@@ -326,6 +326,11 @@ class GBizINFOError(Exception):
     pass
 
 
+class GBizAuthError(GBizINFOError):
+    """APIトークンが未設定・無効（401/403）。探索を止めて理由を表示するために区別する。"""
+    pass
+
+
 class GBizClient:
     """gBizINFO REST API v2 の薄いラッパー"""
 
@@ -369,7 +374,10 @@ class GBizClient:
                 await asyncio.sleep(min(wait, 60))
                 continue
             if resp.status_code == 401 or resp.status_code == 403:
-                raise GBizINFOError("APIトークンが無効か未設定です（401/403）")
+                raise GBizAuthError(
+                    "gBizINFO APIトークンが無効か未設定です（HTTP %d）。設定画面で正しいトークンを登録してください。"
+                    % resp.status_code
+                )
             if resp.status_code == 404:
                 return {}
             if resp.status_code >= 500:
@@ -426,6 +434,19 @@ class GBizClient:
         if infos:
             return infos[0]
         return None
+
+    async def test_connection(self) -> dict:
+        """トークンでgBizINFOに1件だけ検索し、接続可否を返す（設定確認用）。"""
+        if not self.token:
+            return {"ok": False, "message": "APIトークンが未設定です。設定画面で登録してください。"}
+        try:
+            async with httpx.AsyncClient() as client:
+                items = await self.search_page(client, name="株式会社", page=1, limit=1)
+            return {"ok": True, "message": "接続成功（gBizINFOに到達できました）", "sample_count": len(items)}
+        except GBizAuthError as e:
+            return {"ok": False, "message": str(e)}
+        except GBizINFOError as e:
+            return {"ok": False, "message": "接続できませんでした: %s" % e}
 
 
 def _company_from_search(item: dict) -> Company:
@@ -705,6 +726,11 @@ class ListBuilder:
 
         目標件数に到達するか、検索対象を全て使い切る（これ以上見つからない）まで止まらない。
         """
+        if not self.gbiz.configured:
+            raise GBizAuthError(
+                "gBizINFO APIトークンが設定されていません。設定画面で登録するか、"
+                "検索モードを「ローカルCSV」に切り替えてください。"
+            )
         stats = BuildStats()
         target = criteria.target_count
         cap_to = criteria.capital_max if strict_capital else None
@@ -732,6 +758,8 @@ class ListBuilder:
                 if enrich:
                     try:
                         d = await self.gbiz.detail(client, comp.corporate_number)
+                    except GBizAuthError:
+                        raise
                     except GBizINFOError:
                         d = None
                     if d:
@@ -785,6 +813,8 @@ class ListBuilder:
                             page=page,
                             limit=1000,
                         )
+                    except GBizAuthError:
+                        raise  # トークン不正は探索を止めて理由を表示
                     except GBizINFOError:
                         logger.exception("検索エラー kw=%s pref=%s page=%s", kw, pref, page)
                         break

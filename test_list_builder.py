@@ -286,6 +286,28 @@ class FakeGBiz:
         return {"capital_stock": 5000000, "employee_number": emp, "industry": "建設業"}
 
 
+def test_gbiz_no_token_and_auth_guard():
+    """トークン未設定なら接続テストは失敗、APIモードのbuildは明確なエラーになる"""
+    from list_builder import GBizClient, GBizAuthError
+
+    client = GBizClient(token="")
+    assert client.configured is False
+    res = asyncio.run(client.test_connection())
+    assert res["ok"] is False
+    assert "トークン" in res["message"]
+
+    builder = ListBuilder(gbiz=GBizClient(token=""))
+    criteria = SearchCriteria(name_keywords=["工務店"], prefectures=["東京都"], target_count=10)
+    raised = False
+    try:
+        asyncio.run(builder.build(criteria, mode="api"))
+    except GBizAuthError as e:
+        raised = True
+        assert "トークン" in str(e)
+    assert raised, "トークン未設定のAPIモードは GBizAuthError を出すべき"
+    print("✓ トークン未設定: 接続テスト失敗＆APIモードは明確にエラー")
+
+
 def _run_build(builder, criteria, **kw):
     progresses = []
     async def prog(p):
@@ -363,6 +385,7 @@ if __name__ == "__main__":
         test_api_bot_reaches_target,
         test_api_bot_continues_until_exhausted,
         test_api_bot_skips_out_of_range_and_keeps_going,
+        test_gbiz_no_token_and_auth_guard,
     ]
     for t in tests:
         t()

@@ -284,6 +284,10 @@
               <option value="auto">自動（ローカルCSVがあれば優先）</option>
               <option value="demo">デモデータ</option>
             </select>
+            <div style="margin-top:8px;">
+              <button type="button" class="btn btn-sm btn-secondary" onclick="ListBuilder.testConnection()">gBizINFO 接続テスト</button>
+              <span id="lb-conn-status" style="margin-left:8px;font-size:12px;"></span>
+            </div>
             <span class="hint" id="lb-local-status" style="display:block;margin-top:6px;color:var(--gray-400);font-size:12px;"></span>
           </div>
 

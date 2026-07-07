@@ -410,6 +410,13 @@ async def api_list_local_status():
     }
 
 
+@app.post("/api/list/test-connection")
+async def api_list_test_connection():
+    """gBizINFO APIトークンで実際に1件検索し、接続できるか確認する（設定確認用）"""
+    from list_builder import GBizClient
+    return await GBizClient().test_connection()
+
+
 @app.get("/api/list/jobs/{job_id}/export")
 async def api_list_export(job_id: str, fmt: str = "detail"):
     """完成したリストをCSVでダウンロードする（fmt=detail|call）"""

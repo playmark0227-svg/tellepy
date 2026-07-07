@@ -296,6 +296,25 @@ const ListBuilder = {
       '規模感は、従業員数10-20名、資本金1000万円以下、東京と神奈川で1000件程お願いできますと幸いです。';
   },
 
+  async testConnection() {
+    const el = document.getElementById('lb-conn-status');
+    el.textContent = '接続中...';
+    el.style.color = 'var(--gray-400)';
+    try {
+      const r = await api('POST', '/list/test-connection');
+      if (r.ok) {
+        el.textContent = '✅ ' + r.message;
+        el.style.color = 'var(--success)';
+      } else {
+        el.textContent = '❌ ' + r.message;
+        el.style.color = 'var(--danger, #dc2626)';
+      }
+    } catch (e) {
+      el.textContent = '❌ テスト失敗: ' + e.message;
+      el.style.color = 'var(--danger, #dc2626)';
+    }
+  },
+
   async parse() {
     const text = document.getElementById('lb-inquiry').value.trim();
     if (!text) { toast('依頼文を入力してください', 'error'); return; }
