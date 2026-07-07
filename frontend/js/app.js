@@ -407,7 +407,9 @@ const ListBuilder = {
   renderProgress(job) {
     const p = job.progress || {};
     const el = document.getElementById('lb-progress-text');
-    if (p.phase === 'collect') {
+    if (p.phase === 'web') {
+      el.textContent = `🌐 Web探索中... ${p.found || 0} / ${p.target || '?'} 社（HP ${p.scanned || 0}件を確認 / ${p.detail || ''}）`;
+    } else if (p.phase === 'collect') {
       const scanned = (p.scanned || 0).toLocaleString();
       el.textContent = `🤖 探索中... ${p.found || 0} / ${p.target || '?'} 社 収集（${scanned}社を確認 / ${p.detail || ''}）`;
     } else if (p.phase === 'local') {
@@ -441,17 +443,21 @@ const ListBuilder = {
     const note = document.getElementById('lb-note');
     const target = (job.progress && job.progress.target) || 0;
     const exhausted = job.progress && job.progress.exhausted;
+    const isWeb = job.mode === 'web';
+    const src = isWeb ? 'Web検索' : 'gBizINFO';
     const msgs = [];
     if (stats.demo) {
-      msgs.push('⚠ これはデモデータです。gBizINFO自動巡回botを使うには、設定画面でgBizINFO APIトークンを登録してください（無料）。');
+      msgs.push('⚠ これはデモデータです。Web自動探索を使うには検索モードを「Web自動探索」にしてください。');
     } else {
       if (exhausted && target && job.count < target) {
-        msgs.push(`⚠ gBizINFOで見つかったのは ${job.count} 社でした（目標 ${target} 社に対し、条件に合う会社をこれ以上見つけられませんでした）。キーワードや資本金・従業員の条件をゆるめると増えます。`);
+        msgs.push(`⚠ ${src}で見つかったのは ${job.count} 社でした（目標 ${target} 社に到達前に候補を出し切りました）。地域・業種のキーワードを増やすと件数が伸びます。`);
       } else if (target && job.count >= target) {
         msgs.push(`✅ 目標の ${target} 社に到達しました。`);
       }
-      if ((stats.unknown_employee || 0) > 0) {
-        msgs.push('ℹ 従業員数が不明な会社が含まれます（gBizINFOは小規模企業の従業員数が欠損しがち）。「従業員数不明を含める」を外すと確認済みだけに絞れます。電話番号はgBizINFOに無いため架電用CSVの電話欄は空です。');
+      if (isWeb) {
+        msgs.push('ℹ Web上の公開HPから会社名・電話番号・住所を抽出しています。従業員数・資本金は会社概要に記載がある場合のみ取得（無い会社は不明のまま含めます）。抽出はページ構成により取りこぼしがあります。');
+      } else if ((stats.unknown_employee || 0) > 0) {
+        msgs.push('ℹ 従業員数が不明な会社が含まれます（gBizINFOは小規模企業の従業員数が欠損しがち）。電話番号はgBizINFOに無いため架電用CSVの電話欄は空です。');
       }
     }
     if (msgs.length) { note.innerHTML = msgs.join('<br>'); note.classList.remove('hidden'); }

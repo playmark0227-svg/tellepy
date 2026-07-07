@@ -225,7 +225,7 @@
     <div id="page-listbuilder" class="page hidden">
       <div class="page-header">
         <h2>リスト作成</h2>
-        <p>依頼文を貼るだけ。gBizINFOを自動で巡回し、目標件数に達するまで条件に合う企業を探し続けます</p>
+        <p>依頼文を貼るだけ。条件に合う企業の公開HPをWebから自動で探し、目標件数に達するまでリスト化します</p>
       </div>
       <div class="page-body">
         <div class="card">
@@ -279,9 +279,9 @@
           <div class="form-group">
             <label>検索モード</label>
             <select id="lb-mode">
-              <option value="api" selected>gBizINFO 自動巡回bot（目標件数まで探し続ける）</option>
+              <option value="web" selected>Web自動探索（条件に合うHPを探してリスト化）</option>
+              <option value="api">gBizINFO 自動巡回bot（資本金・従業員数で絞る）</option>
               <option value="local">ローカルCSV（PC内のCSVを検索）</option>
-              <option value="auto">自動（ローカルCSVがあれば優先）</option>
               <option value="demo">デモデータ</option>
             </select>
             <div style="margin-top:8px;">
@@ -295,7 +295,7 @@
             <div class="card-title" style="font-size:13px;">詳細オプション</div>
             <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
               <input type="checkbox" id="lb-enrich" checked style="width:auto;">
-              （APIモード時）各社の従業員数・業種・URLを詳細APIで取得する（精度↑・時間↑）
+              各社の会社概要ページも取得して資本金・従業員数を拾う（Web探索）／詳細APIで取得する（gBizINFO）
             </label>
             <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
               <input type="checkbox" id="lb-unknown" checked style="width:auto;">

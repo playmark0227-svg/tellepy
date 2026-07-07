@@ -21,6 +21,7 @@ ENV_MAP = {
     "base_url": "BASE_URL",
     "forward_phone_number": "FORWARD_PHONE_NUMBER",
     "gbizinfo_api_token": "GBIZINFO_API_TOKEN",
+    "search_api_key": "SEARCH_API_KEY",
 }
 
 DEFAULT_CONFIG = {k: "" for k in ENV_MAP}
@@ -63,6 +64,7 @@ def get_masked_config() -> dict:
     secret_keys = {
         "twilio_auth_token", "deepgram_api_key", "elevenlabs_api_key",
         "anthropic_api_key", "slack_webhook_url", "gbizinfo_api_token",
+        "search_api_key",
     }
     masked = {}
     for k, v in config.items():

@@ -101,7 +101,7 @@ async def api_put_settings(request: Request):
     secret_keys = {
         "twilio_auth_token", "deepgram_api_key", "elevenlabs_api_key",
         "anthropic_api_key", "supabase_key", "slack_webhook_url",
-        "gbizinfo_api_token",
+        "gbizinfo_api_token", "search_api_key",
     }
     for key in current:
         val = new.get(key, "")
@@ -329,23 +329,36 @@ async def _run_build_job(job_id: str, req: BuildRequest):
     job = list_jobs[job_id]
     try:
         criteria = SearchCriteria.from_dict(req.criteria)
-        builder = ListBuilder(GBizClient(), LocalDataSource())
 
         async def on_progress(p: dict):
             job["progress"] = p
 
         job["status"] = "running"
-        job["mode"] = builder.resolve_mode("demo" if req.demo else req.mode)
-        companies, stats = await builder.build(
-            criteria,
-            mode=req.mode,
-            enrich=req.enrich,
-            detail_budget=req.detail_budget,
-            include_unknown_employee=req.include_unknown_employee,
-            strict_capital=req.strict_capital,
-            demo=req.demo,
-            progress=on_progress,
-        )
+
+        if req.mode == "web":
+            # Web自動探索: 公開HPを検索して会社情報を抽出する
+            from web_finder import WebFinder
+            job["mode"] = "web"
+            companies, stats = await WebFinder().find(
+                criteria,
+                fetch_profile=req.enrich,
+                include_unknown_employee=req.include_unknown_employee,
+                strict_capital=req.strict_capital,
+                progress=on_progress,
+            )
+        else:
+            builder = ListBuilder(GBizClient(), LocalDataSource())
+            job["mode"] = builder.resolve_mode("demo" if req.demo else req.mode)
+            companies, stats = await builder.build(
+                criteria,
+                mode=req.mode,
+                enrich=req.enrich,
+                detail_budget=req.detail_budget,
+                include_unknown_employee=req.include_unknown_employee,
+                strict_capital=req.strict_capital,
+                demo=req.demo,
+                progress=on_progress,
+            )
         job["status"] = "done"
         job["companies"] = [c.to_dict() for c in companies]
         job["stats"] = stats.__dict__

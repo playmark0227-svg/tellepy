@@ -1,0 +1,196 @@
+"""web_finder のオフライン単体テスト（ネットワーク不使用）
+
+実際のWebアクセスは実行環境で行うため、ここでは抽出・判定・クエリ生成・
+検索結果パースといった純ロジックをフィクスチャで検証する。
+実行: python test_web_finder.py
+"""
+
+import asyncio
+
+from list_builder import SearchCriteria
+from web_finder import (
+    DuckDuckGoProvider,
+    WebFinder,
+    domain_of,
+    extract_company,
+    find_profile_url,
+    generate_queries,
+    is_excluded,
+)
+
+SAMPLE_HP = """
+<html><head>
+<title>株式会社まごころ工務店｜東京都世田谷区の注文住宅・リフォーム</title>
+<meta property="og:site_name" content="株式会社まごころ工務店">
+</head><body>
+<header>ようこそ</header>
+<div class="info">〒155-0031 東京都世田谷区北沢2-1-1 まごころビル3F</div>
+<div>TEL：03-1234-5678 / FAX：03-1234-5679</div>
+<section id="company">
+  <p>資本金：800万円</p>
+  <p>従業員数 14名</p>
+</section>
+<a href="/company/about.html">会社概要はこちら</a>
+</body></html>
+"""
+
+# 会社概要が別ページにある例（トップには資本金/従業員なし）
+TOP_NO_PROFILE = """
+<html><head><title>ハマノ不動産 - 横浜の不動産</title></head><body>
+<p>神奈川県横浜市港北区新横浜1-2-3</p>
+<p>お問い合わせ 045-999-8888</p>
+<a href="https://hamano.example.jp/about">会社案内</a>
+</body></html>
+"""
+
+
+def test_domain_of():
+    assert domain_of("https://www.example.co.jp/path") == "example.co.jp"
+    assert domain_of("https://sub.foo.co.jp/") == "foo.co.jp"
+    assert domain_of("http://example.com") == "example.com"
+    assert domain_of("https://shop.example.jp") == "example.jp"
+    print("✓ ドメイン抽出（co.jp/サブドメイン/.com）")
+
+
+def test_is_excluded():
+    assert is_excluded("https://itp.ne.jp/xxx") is True          # タウンページ
+    assert is_excluded("https://www.city.yokohama.lg.jp/") is True  # 行政
+    assert is_excluded("https://indeed.com/jobs") is True          # 求人
+    assert is_excluded("https://magokoro-koumuten.co.jp/") is False  # 企業HP
+    print("✓ 除外ドメイン判定（ディレクトリ/行政/求人を除外）")
+
+
+def test_extract_company():
+    c = extract_company("https://magokoro-koumuten.co.jp/", SAMPLE_HP)
+    assert c.name == "株式会社まごころ工務店", c.name
+    assert c.prefecture == "東京都", c.prefecture
+    assert c.phone_number.replace(" ", "") == "03-1234-5678", c.phone_number
+    assert c.capital_stock == 8_000_000, c.capital_stock
+    assert c.employee_number == 14, c.employee_number
+    assert "東京都世田谷区" in c.location, c.location
+    assert c.company_url == "https://magokoro-koumuten.co.jp/"
+    print("✓ HPから会社情報抽出（社名/電話/住所/資本金/従業員数）")
+
+
+def test_find_profile_url():
+    assert find_profile_url("https://ex.co.jp/", SAMPLE_HP) == "https://ex.co.jp/company/about.html"
+    assert find_profile_url("https://x.jp/", TOP_NO_PROFILE) == "https://hamano.example.jp/about"
+    print("✓ 会社概要ページのURL解決（相対/絶対）")
+
+
+def test_phone_prefecture_only_top():
+    c = extract_company("https://hamano.example.jp/", TOP_NO_PROFILE)
+    assert c.name == "ハマノ不動産", c.name
+    assert c.prefecture == "神奈川県"
+    assert c.phone_number.replace(" ", "") == "045-999-8888"
+    assert c.capital_stock is None and c.employee_number is None  # トップには無い
+    print("✓ トップに資本金/従業員が無いHPの抽出（電話・都道府県は取得）")
+
+
+def test_generate_queries():
+    c = SearchCriteria(industries=["工務店", "不動産"], prefectures=["東京都", "神奈川県"])
+    qs = generate_queries(c)
+    assert any("工務店 東京都" in q for q in qs)
+    assert any("不動産 神奈川県横浜市" in q for q in qs)
+    assert any("会社概要" in q for q in qs)
+    assert len(qs) == len(set(qs)), "重複が無い"
+    assert len(qs) > 20, "地域×業種で十分な数のクエリ"
+    print(f"✓ 検索クエリ生成（{len(qs)}クエリ・業種×地域）")
+
+
+def test_ddg_parse():
+    ddg_html = """
+    <div class="result">
+      <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fmagokoro-koumuten.co.jp%2F&rut=aaa">まごころ工務店</a>
+    </div>
+    <div class="result">
+      <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fhamano.example.jp%2F&rut=bbb">ハマノ不動産</a>
+    </div>
+    """
+    urls = DuckDuckGoProvider._parse(ddg_html)
+    assert "https://magokoro-koumuten.co.jp/" in urls, urls
+    assert "https://hamano.example.jp/" in urls, urls
+    assert len(urls) == 2
+    print("✓ DuckDuckGo検索結果のパース（uddgデコード）")
+
+
+def test_passes_filter():
+    c = SearchCriteria(employee_min=10, employee_max=20, capital_max=10_000_000)
+    from web_finder import WebFinder as WF
+    ok = extract_company("https://magokoro-koumuten.co.jp/", SAMPLE_HP)  # emp14, cap800万
+    assert WF._passes(ok, c, include_unknown_employee=True, strict_capital=False) is True
+    ng = extract_company("https://hamano.example.jp/", TOP_NO_PROFILE)   # emp/cap不明
+    assert WF._passes(ng, c, include_unknown_employee=True, strict_capital=False) is True
+    assert WF._passes(ng, c, include_unknown_employee=False, strict_capital=False) is False
+    print("✓ 条件判定（会社概要が取れた社は厳密判定・不明は含む/除外を選択）")
+
+
+def test_web_find_with_fake_provider():
+    """検索プロバイダとHTTPをモックして、探索ループが目標件数まで集めることを確認"""
+    import httpx
+
+    class FakeProvider:
+        def __init__(self):
+            self.n = 0
+
+        async def search(self, client, query, max_results=20):
+            # クエリごとに個別ドメインのHPを3つ返す
+            out = []
+            for _ in range(3):
+                self.n += 1
+                out.append(f"https://company{self.n}.com/")
+            return out
+
+    def handler(request):
+        url = str(request.url)
+        num = int("".join(ch for ch in url if ch.isdigit()) or "0")
+        pref = "東京都世田谷区" if num % 2 == 0 else "神奈川県横浜市港北区"
+        body = f"""<html><head><title>株式会社テスト{num}</title></head>
+        <body><p>〒155-0031 {pref}1-2-3</p><p>TEL 03-1111-2222</p>
+        <p>従業員数 15名</p><p>資本金 500万円</p></body></html>"""
+        return httpx.Response(200, text=body, headers={"content-type": "text/html; charset=utf-8"})
+
+    async def run():
+        finder = WebFinder(provider=FakeProvider())
+        # httpxのトランスポートをモックに差し替える
+        transport = httpx.MockTransport(handler)
+        orig = httpx.AsyncClient
+
+        def patched(*a, **k):
+            k["transport"] = transport
+            return orig(*a, **k)
+
+        httpx.AsyncClient = patched
+        try:
+            criteria = SearchCriteria(
+                industries=["工務店"], prefectures=["東京都", "神奈川県"],
+                employee_min=10, employee_max=20, capital_max=10_000_000, target_count=15,
+            )
+            companies, stats = await finder.find(criteria, fetch_profile=False)
+        finally:
+            httpx.AsyncClient = orig
+        return companies, stats
+
+    companies, stats = asyncio.run(run())
+    assert len(companies) == 15, len(companies)
+    for c in companies:
+        assert c.company_url and c.phone_number == "03-1111-2222"
+        assert c.prefecture in ("東京都", "神奈川県")
+    print(f"✓ 探索ループ（モックWeb）で目標到達（{len(companies)}社・電話番号付き）")
+
+
+if __name__ == "__main__":
+    tests = [
+        test_domain_of,
+        test_is_excluded,
+        test_extract_company,
+        test_find_profile_url,
+        test_phone_prefecture_only_top,
+        test_generate_queries,
+        test_ddg_parse,
+        test_passes_filter,
+        test_web_find_with_fake_provider,
+    ]
+    for t in tests:
+        t()
+    print(f"\n全 {len(tests)} テスト成功 ✅")
