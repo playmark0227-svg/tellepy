@@ -388,7 +388,10 @@ const ListBuilder = {
   renderProgress(job) {
     const p = job.progress || {};
     const el = document.getElementById('lb-progress-text');
-    if (p.phase === 'local') {
+    if (p.phase === 'collect') {
+      const scanned = (p.scanned || 0).toLocaleString();
+      el.textContent = `🤖 探索中... ${p.found || 0} / ${p.target || '?'} 社 収集（${scanned}社を確認 / ${p.detail || ''}）`;
+    } else if (p.phase === 'local') {
       el.textContent = `PC内のCSVを検索中... ${(p.scanned || 0).toLocaleString()}行を走査 / 該当 ${p.found || 0} 社`;
     } else if (p.phase === 'search') {
       el.textContent = `検索中... 候補 ${p.found || 0} 社（${p.detail || ''}）`;
@@ -417,15 +420,23 @@ const ListBuilder = {
     ).join('');
 
     const note = document.getElementById('lb-note');
+    const target = (job.progress && job.progress.target) || 0;
+    const exhausted = job.progress && job.progress.exhausted;
+    const msgs = [];
     if (stats.demo) {
-      note.textContent = '⚠ これはデモデータです。PC内検索を使うにはdata/フォルダにCSVを置く、またはgBizINFO APIトークンを登録してください。';
-      note.classList.remove('hidden');
-    } else if ((stats.unknown_employee || 0) > 0) {
-      note.textContent = 'ℹ 従業員数が不明な会社が含まれています（gBizINFOは小規模企業の従業員数が欠損しがちなため）。「従業員数不明を含める」を外すと除外できます。また電話番号はgBizINFOに含まれないため、架電用CSVの電話番号欄は空です。';
-      note.classList.remove('hidden');
+      msgs.push('⚠ これはデモデータです。gBizINFO自動巡回botを使うには、設定画面でgBizINFO APIトークンを登録してください（無料）。');
     } else {
-      note.classList.add('hidden');
+      if (exhausted && target && job.count < target) {
+        msgs.push(`⚠ gBizINFOで見つかったのは ${job.count} 社でした（目標 ${target} 社に対し、条件に合う会社をこれ以上見つけられませんでした）。キーワードや資本金・従業員の条件をゆるめると増えます。`);
+      } else if (target && job.count >= target) {
+        msgs.push(`✅ 目標の ${target} 社に到達しました。`);
+      }
+      if ((stats.unknown_employee || 0) > 0) {
+        msgs.push('ℹ 従業員数が不明な会社が含まれます（gBizINFOは小規模企業の従業員数が欠損しがち）。「従業員数不明を含める」を外すと確認済みだけに絞れます。電話番号はgBizINFOに無いため架電用CSVの電話欄は空です。');
+      }
     }
+    if (msgs.length) { note.innerHTML = msgs.join('<br>'); note.classList.remove('hidden'); }
+    else note.classList.add('hidden');
 
     const fmtYen = (v) => v == null || v === '' ? '-' : '¥' + Number(v).toLocaleString();
     document.getElementById('lb-tbody').innerHTML = (job.companies || []).map(c =>

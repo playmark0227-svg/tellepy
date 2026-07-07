@@ -245,6 +245,108 @@ def test_resolve_mode():
     print("✓ 検索モードの自動判定")
 
 
+class FakeGBiz:
+    """gBizINFO APIのモック。ネットワークを使わずに探索botのループを検証する。"""
+
+    def __init__(self, per_page, employee_fn=None):
+        self.token = "fake-token"
+        self.per_page = per_page
+        self.employee_fn = employee_fn
+        self._counter = 0
+        self.detail_calls = 0
+
+    @property
+    def configured(self):
+        return True
+
+    async def search_page(self, client, *, name=None, prefecture=None,
+                          capital_stock_from=None, capital_stock_to=None,
+                          employee_number_from=None, employee_number_to=None,
+                          page=1, limit=1000):
+        if page != 1:
+            return []  # 1ページ目だけデータを返す
+        pref_name = "東京都" if prefecture == "13" else "神奈川県"
+        out = []
+        for _ in range(self.per_page):
+            self._counter += 1
+            cn = f"{self._counter:013d}"
+            out.append({
+                "corporate_number": cn,
+                "name": f"株式会社{name or ''}{cn}",
+                "location": f"{pref_name}新宿区1-1",
+                "postal_code": "",
+            })
+        return out
+
+    async def detail(self, client, corporate_number):
+        self.detail_calls += 1
+        emp = 15
+        if self.employee_fn:
+            emp = self.employee_fn(int(corporate_number))
+        return {"capital_stock": 5000000, "employee_number": emp, "industry": "建設業"}
+
+
+def _run_build(builder, criteria, **kw):
+    progresses = []
+    async def prog(p):
+        progresses.append(p)
+    companies, stats = asyncio.run(builder.build(criteria, progress=prog, **kw))
+    return companies, stats, progresses
+
+
+def test_api_bot_reaches_target():
+    """候補が十分あれば目標件数に達したら止まる（それ以上取りすぎない）"""
+    fake = FakeGBiz(per_page=20)  # 2県×3キーワード×20 = 120候補
+    builder = ListBuilder(gbiz=fake)
+    criteria = SearchCriteria(
+        name_keywords=["工務店", "建設", "不動産"],
+        prefectures=["東京都", "神奈川県"],
+        capital_max=10_000_000, target_count=50,
+    )
+    companies, stats, progresses = _run_build(builder, criteria, mode="api", enrich=False)
+    assert len(companies) == 50, len(companies)
+    assert stats.candidates == 50, "目標到達で即停止、余分に取得しない"
+    done = progresses[-1]
+    assert done["phase"] == "done"
+    assert done.get("exhausted") in (False, None) or done["found"] == 50
+    print(f"✓ 自動巡回bot: 目標到達で停止（{len(companies)}/50, 走査{stats.candidates}）")
+
+
+def test_api_bot_continues_until_exhausted():
+    """候補が足りなければ、取れるだけ取って（枯渇するまで）止まらない"""
+    fake = FakeGBiz(per_page=5)  # 2県×3キーワード×5 = 30候補しかない
+    builder = ListBuilder(gbiz=fake)
+    criteria = SearchCriteria(
+        name_keywords=["工務店", "建設", "不動産"],
+        prefectures=["東京都", "神奈川県"],
+        capital_max=10_000_000, target_count=100,
+    )
+    companies, stats, progresses = _run_build(builder, criteria, mode="api", enrich=False)
+    assert len(companies) == 30, "全候補30件を集めきる"
+    assert progresses[-1].get("exhausted") is True, "枯渇フラグが立つ"
+    print(f"✓ 自動巡回bot: 枯渇まで探索（{len(companies)}件で全ソース使い切り）")
+
+
+def test_api_bot_skips_out_of_range_and_keeps_going():
+    """従業員数が範囲外の会社は飛ばして、範囲内だけで目標に達するまで続ける"""
+    # 偶数法人番号は従業員15（範囲内）、奇数は50（範囲外）
+    fake = FakeGBiz(per_page=40, employee_fn=lambda n: 15 if n % 2 == 0 else 50)
+    builder = ListBuilder(gbiz=fake)
+    criteria = SearchCriteria(
+        name_keywords=["工務店", "建設", "不動産"],
+        prefectures=["東京都", "神奈川県"],
+        employee_min=10, employee_max=20, capital_max=10_000_000, target_count=30,
+    )
+    companies, stats, _ = _run_build(
+        builder, criteria, mode="api", enrich=True, include_unknown_employee=False,
+    )
+    assert len(companies) == 30, len(companies)
+    for c in companies:
+        assert c.employee_number == 15, "範囲外(50)は含まれない"
+    assert stats.candidates >= 60, "範囲外を飛ばした分だけ多く走査している"
+    print(f"✓ 自動巡回bot: 範囲外を飛ばし条件一致で目標達成（走査{stats.candidates}→{len(companies)}）")
+
+
 if __name__ == "__main__":
     tests = [
         test_prefecture_normalization,
@@ -258,6 +360,9 @@ if __name__ == "__main__":
         test_local_search_and_build,
         test_local_column_autodetect_and_encoding,
         test_resolve_mode,
+        test_api_bot_reaches_target,
+        test_api_bot_continues_until_exhausted,
+        test_api_bot_skips_out_of_range_and_keeps_going,
     ]
     for t in tests:
         t()

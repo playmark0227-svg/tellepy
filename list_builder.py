@@ -683,88 +683,148 @@ class ListBuilder:
                 progress=progress,
             )
 
+        return await self._build_api(
+            criteria,
+            enrich=enrich,
+            include_unknown_employee=include_unknown_employee,
+            strict_capital=strict_capital,
+            progress=progress,
+        )
+
+    async def _build_api(
+        self,
+        criteria: SearchCriteria,
+        *,
+        enrich: bool,
+        include_unknown_employee: bool,
+        strict_capital: bool,
+        progress: Optional[ProgressCallback] = None,
+    ) -> tuple[list[Company], BuildStats]:
+        """gBizINFOを都道府県×キーワード×ページで自動巡回し、目標件数に達するまで
+        条件に合う企業を集め続ける（探索botの本体）。
+
+        目標件数に到達するか、検索対象を全て使い切る（これ以上見つからない）まで止まらない。
+        """
         stats = BuildStats()
-        candidates: dict[str, Company] = {}
-        pref_codes = criteria.prefecture_codes() or [None]  # type: ignore[list-item]
-        keywords = criteria.name_keywords or [""]
+        target = criteria.target_count
         cap_to = criteria.capital_max if strict_capital else None
         cap_from = criteria.capital_min if strict_capital else None
-        candidate_ceiling = max(criteria.target_count * 3, criteria.target_count + 200)
+        final: dict[str, Company] = {}
+        exhausted = True  # 途中でtargetに達したらFalseにする
+
+        async def emit(phase: str, detail: str = ""):
+            if progress:
+                await progress({
+                    "phase": phase,
+                    "found": len(final),
+                    "scanned": stats.candidates,
+                    "enriched": stats.enriched,
+                    "target": target,
+                    "detail": detail,
+                })
 
         async with httpx.AsyncClient() as client:
-            # --- フェーズ1: 検索で母集団を集める ---
-            for pref in pref_codes:
-                for kw in keywords:
-                    if len(candidates) >= candidate_ceiling:
-                        break
-                    for page in range(1, GBIZ_SEARCH_MAX_PAGE + 1):
-                        try:
-                            items = await self.gbiz.search_page(
-                                client,
-                                name=kw or None,
-                                prefecture=pref,
-                                capital_stock_from=cap_from,
-                                capital_stock_to=cap_to,
-                                page=page,
-                                limit=1000,
-                            )
-                        except GBizINFOError:
-                            logger.exception("検索エラー kw=%s pref=%s page=%s", kw, pref, page)
-                            break
-                        for item in items:
-                            comp = _company_from_search(item)
-                            if comp.corporate_number and comp.corporate_number not in candidates:
-                                comp.match_reason = f"社名一致:{kw}" if kw else "地域一致"
-                                candidates[comp.corporate_number] = comp
-                        if progress:
-                            await progress({
-                                "phase": "search",
-                                "found": len(candidates),
-                                "target": criteria.target_count,
-                                "detail": f"{prefecture_name_from_code(pref) if pref else '全国'} / {kw}",
-                            })
-                        if len(items) < 1000:
-                            break  # 最終ページ
-                        if len(candidates) >= candidate_ceiling:
-                            break
-            stats.candidates = len(candidates)
-
-            # --- フェーズ2: 詳細取得（従業員数・業種・URL） ---
-            cand_list = list(candidates.values())
-            if enrich:
-                to_enrich = cand_list[:detail_budget]
-                for idx, comp in enumerate(to_enrich):
+            async for comp, detail_label in self._iter_search_candidates(
+                client, criteria, cap_from, cap_to
+            ):
+                stats.candidates += 1
+                # 従業員数で厳密に絞る/詳細を埋めるなら1社ずつ詳細取得
+                if enrich:
                     try:
-                        detail = await self.gbiz.detail(client, comp.corporate_number)
+                        d = await self.gbiz.detail(client, comp.corporate_number)
                     except GBizINFOError:
-                        logger.exception("詳細取得エラー: %s", comp.corporate_number)
-                        detail = None
-                    if detail:
-                        _enrich_company(comp, detail)
+                        d = None
+                    if d:
+                        _enrich_company(comp, d)
                         stats.enriched += 1
-                    if progress and idx % 10 == 0:
-                        await progress({
-                            "phase": "enrich",
-                            "found": len(candidates),
-                            "enriched": stats.enriched,
-                            "target": criteria.target_count,
-                        })
+                if self._passes(comp, criteria, include_unknown_employee):
+                    if comp.employee_number is not None:
+                        comp.match_reason = "属性一致（従業員数確認済み）"
+                    elif not comp.match_reason:
+                        comp.match_reason = "従業員数不明（社名・地域一致）"
+                    final[comp.corporate_number] = comp
+                    if len(final) % 5 == 0:
+                        await emit("collect", detail_label)
+                    if len(final) >= target:
+                        exhausted = False
+                        break
+                elif stats.candidates % 25 == 0:
+                    await emit("collect", detail_label)
 
-        # --- フェーズ3: フィルタ・ランク付け・件数調整 ---
-        selected = self._filter_and_rank(
-            cand_list, criteria, include_unknown_employee=include_unknown_employee
-        )
+        selected = sorted(final.values(), key=lambda c: self._rank_key(c, criteria))[:target]
         stats.matched = len(selected)
         stats.unknown_employee = sum(1 for c in selected if c.employee_number is None)
-        result = selected[: criteria.target_count]
         if progress:
             await progress({
                 "phase": "done",
-                "found": len(result),
+                "found": len(selected),
                 "matched": stats.matched,
-                "target": criteria.target_count,
+                "scanned": stats.candidates,
+                "target": target,
+                "exhausted": exhausted and len(selected) < target,
             })
-        return result, stats
+        return selected, stats
+
+    async def _iter_search_candidates(self, client, criteria, cap_from, cap_to):
+        """gBizINFO検索を全ての 都道府県×キーワード×ページ にわたって巡回し、
+        重複を除いた候補（検索段階のCompany）を1社ずつ yield する。"""
+        seen: set[str] = set()
+        pref_codes = criteria.prefecture_codes() or [None]  # type: ignore[list-item]
+        keywords = criteria.name_keywords or [""]
+        for pref in pref_codes:
+            pref_label = prefecture_name_from_code(pref) if pref else "全国"
+            for kw in keywords:
+                for page in range(1, GBIZ_SEARCH_MAX_PAGE + 1):
+                    try:
+                        items = await self.gbiz.search_page(
+                            client,
+                            name=kw or None,
+                            prefecture=pref,
+                            capital_stock_from=cap_from,
+                            capital_stock_to=cap_to,
+                            page=page,
+                            limit=1000,
+                        )
+                    except GBizINFOError:
+                        logger.exception("検索エラー kw=%s pref=%s page=%s", kw, pref, page)
+                        break
+                    if not items:
+                        break
+                    for item in items:
+                        comp = _company_from_search(item)
+                        cn = comp.corporate_number
+                        if not cn or cn in seen:
+                            continue
+                        seen.add(cn)
+                        comp.prefecture = _prefecture_from_location(comp.location)
+                        comp.match_reason = f"社名一致:{kw}" if kw else "地域一致"
+                        yield comp, f"{pref_label} / {kw} p{page}"
+                    if len(items) < 1000:
+                        break  # このキーワード×都道府県は最終ページ
+
+    def _passes(
+        self,
+        c: Company,
+        criteria: SearchCriteria,
+        include_unknown_employee: bool,
+    ) -> bool:
+        """1社が条件を満たすか判定する（資本金・従業員数）。"""
+        cap_min, cap_max = criteria.capital_min, criteria.capital_max
+        if c.capital_stock is not None:
+            if cap_max is not None and c.capital_stock > cap_max:
+                return False
+            if cap_min is not None and c.capital_stock < cap_min:
+                return False
+        if c.employee_number is not None:
+            if criteria.employee_min is not None and c.employee_number < criteria.employee_min:
+                return False
+            if criteria.employee_max is not None and c.employee_number > criteria.employee_max:
+                return False
+        else:
+            if (criteria.employee_min is not None or criteria.employee_max is not None) \
+                    and not include_unknown_employee:
+                return False
+        return True
 
     async def _build_local(
         self,

@@ -44,9 +44,15 @@
       </div>
       <div class="page-body">
 
+        <div style="font-size:13px;color:#92400e;background:#fef3c7;padding:12px 14px;border-radius:10px;margin-bottom:12px;line-height:1.6;">
+          🤖 <strong>「条件を入れたら1000件まで自動で探し続けるbot」は、ローカル版で動きます。</strong>
+          手元で <code>python main.py</code> を起動 → 管理画面「リスト作成」で、gBizINFOを自動巡回して
+          目標件数に達するまで探し続けます（ブラウザだけの静的ページは外部サイトを取得できない=CORS制約のため、
+          自動巡回はローカルのPythonが担当します）。
+        </div>
         <div style="font-size:13px;color:#166534;background:#dcfce7;padding:12px 14px;border-radius:10px;margin-bottom:16px;line-height:1.6;">
-          🔒 <strong>すべてブラウザの中だけで処理します。</strong>
-          選んだCSVはどこにもアップロードされず、あなたのPC内で検索されます（サーバー・API不要）。
+          🔒 <strong>このブラウザ版は、手元CSVの検索ツールです。</strong>
+          選んだCSVはどこにもアップロードされず、あなたのPC内で検索されます。
           gBizINFOの全件CSVや国税庁の法人番号CSVをそのまま読み込めます。
         </div>
 
