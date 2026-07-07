@@ -20,6 +20,7 @@ ENV_MAP = {
     "slack_webhook_url": "SLACK_WEBHOOK_URL",
     "base_url": "BASE_URL",
     "forward_phone_number": "FORWARD_PHONE_NUMBER",
+    "gbizinfo_api_token": "GBIZINFO_API_TOKEN",
 }
 
 DEFAULT_CONFIG = {k: "" for k in ENV_MAP}
@@ -61,7 +62,7 @@ def get_masked_config() -> dict:
     config = load_config()
     secret_keys = {
         "twilio_auth_token", "deepgram_api_key", "elevenlabs_api_key",
-        "anthropic_api_key", "slack_webhook_url",
+        "anthropic_api_key", "slack_webhook_url", "gbizinfo_api_token",
     }
     masked = {}
     for k, v in config.items():

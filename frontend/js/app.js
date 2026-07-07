@@ -40,7 +40,7 @@ function navigate(page) {
     n.classList.toggle('active', n.dataset.page === page);
   });
   // Load page data
-  const loaders = { dashboard: Dashboard.load, settings: Settings.load, scripts: Scripts.load, calls: Calls.load, history: History.load };
+  const loaders = { dashboard: Dashboard.load, settings: Settings.load, scripts: Scripts.load, listbuilder: ListBuilder.load, calls: Calls.load, history: History.load };
   loaders[page]?.();
 }
 
@@ -259,6 +259,169 @@ document.getElementById('script-form')?.addEventListener('submit', async (e) => 
     toast('保存に失敗しました: ' + e.message, 'error');
   }
 });
+
+// ===== List Builder =====
+const ListBuilder = {
+  pollTimer: null,
+  currentJob: null,
+
+  load() {
+    // 静的ページなので特別なロード処理は不要
+  },
+
+  fillSample() {
+    document.getElementById('lb-inquiry').value =
+      '工務店、不動産のリスト作成をお願いしたくお繋ぎいただきました！\n' +
+      '規模感は、従業員数10-20名、資本金1000万円以下、東京と神奈川で1000件程お願いできますと幸いです。';
+  },
+
+  async parse() {
+    const text = document.getElementById('lb-inquiry').value.trim();
+    if (!text) { toast('依頼文を入力してください', 'error'); return; }
+    try {
+      const c = await api('POST', '/list/parse', { text });
+      this.fillCriteria(c);
+      document.getElementById('lb-criteria-card').classList.remove('hidden');
+      toast('条件を読み取りました。内容を確認してください');
+    } catch (e) {
+      toast('読み取りに失敗しました: ' + e.message, 'error');
+    }
+  },
+
+  fillCriteria(c) {
+    const yen = c.capital_max != null ? c.capital_max : '';
+    document.getElementById('lb-industries').value = (c.industries || []).join(', ');
+    document.getElementById('lb-prefectures').value = (c.prefectures || []).join(', ');
+    document.getElementById('lb-keywords').value = (c.name_keywords || []).join(', ');
+    document.getElementById('lb-emp-min').value = c.employee_min ?? '';
+    document.getElementById('lb-emp-max').value = c.employee_max ?? '';
+    document.getElementById('lb-cap-max').value = yen;
+    document.getElementById('lb-count').value = c.target_count ?? 100;
+  },
+
+  collectCriteria() {
+    const split = (id) => document.getElementById(id).value.split(',').map(s => s.trim()).filter(Boolean);
+    const numOrNull = (id) => {
+      const v = document.getElementById(id).value.trim();
+      return v === '' ? null : parseInt(v, 10);
+    };
+    return {
+      industries: split('lb-industries'),
+      prefectures: split('lb-prefectures'),
+      name_keywords: split('lb-keywords'),
+      employee_min: numOrNull('lb-emp-min'),
+      employee_max: numOrNull('lb-emp-max'),
+      capital_max: numOrNull('lb-cap-max'),
+      capital_min: null,
+      target_count: numOrNull('lb-count') || 100,
+    };
+  },
+
+  async build() {
+    const criteria = this.collectCriteria();
+    if (criteria.name_keywords.length === 0 && criteria.industries.length === 0) {
+      toast('業種または社名キーワードを指定してください', 'error'); return;
+    }
+    const req = {
+      criteria,
+      enrich: document.getElementById('lb-enrich').checked,
+      include_unknown_employee: document.getElementById('lb-unknown').checked,
+      strict_capital: document.getElementById('lb-strict-cap').checked,
+      demo: document.getElementById('lb-demo').checked,
+      detail_budget: 1500,
+    };
+    try {
+      document.getElementById('lb-result-card').classList.add('hidden');
+      document.getElementById('lb-progress-card').classList.remove('hidden');
+      document.getElementById('lb-progress-text').textContent = '検索を開始しています...';
+      const res = await api('POST', '/list/build', req);
+      this.currentJob = res.job_id;
+      this.poll();
+    } catch (e) {
+      document.getElementById('lb-progress-card').classList.add('hidden');
+      toast('リスト作成の開始に失敗しました: ' + e.message, 'error');
+    }
+  },
+
+  poll() {
+    if (this.pollTimer) clearTimeout(this.pollTimer);
+    const tick = async () => {
+      if (!this.currentJob) return;
+      try {
+        const job = await api('GET', '/list/jobs/' + this.currentJob);
+        this.renderProgress(job);
+        if (job.status === 'done') { this.renderResult(job); return; }
+        if (job.status === 'error') {
+          document.getElementById('lb-progress-card').classList.add('hidden');
+          toast('作成に失敗しました: ' + (job.error || '不明なエラー'), 'error');
+          return;
+        }
+        this.pollTimer = setTimeout(tick, 1500);
+      } catch (e) {
+        this.pollTimer = setTimeout(tick, 2500);
+      }
+    };
+    tick();
+  },
+
+  renderProgress(job) {
+    const p = job.progress || {};
+    const el = document.getElementById('lb-progress-text');
+    if (p.phase === 'search') {
+      el.textContent = `検索中... 候補 ${p.found || 0} 社（${p.detail || ''}）`;
+    } else if (p.phase === 'enrich') {
+      el.textContent = `詳細情報を取得中... ${p.enriched || 0} / ${p.found || 0} 社`;
+    } else {
+      el.textContent = '仕上げ中...';
+    }
+  },
+
+  renderResult(job) {
+    document.getElementById('lb-progress-card').classList.add('hidden');
+    document.getElementById('lb-result-card').classList.remove('hidden');
+    const stats = job.stats || {};
+    document.getElementById('lb-result-title').textContent = `作成結果：${job.count} 社`;
+
+    const statItems = [
+      ['取得件数', job.count],
+      ['候補総数', stats.candidates ?? '-'],
+      ['詳細取得', stats.enriched ?? '-'],
+      ['従業員数不明', stats.unknown_employee ?? '-'],
+    ];
+    document.getElementById('lb-stats').innerHTML = statItems.map(([label, val]) =>
+      `<div class="stat-card"><div class="label">${label}</div><div class="value">${val}</div></div>`
+    ).join('');
+
+    const note = document.getElementById('lb-note');
+    if (stats.demo) {
+      note.textContent = '⚠ これはデモデータです。実データを取得するには設定画面でgBizINFO APIトークンを登録してください。';
+      note.classList.remove('hidden');
+    } else if ((stats.unknown_employee || 0) > 0) {
+      note.textContent = 'ℹ 従業員数が不明な会社が含まれています（gBizINFOは小規模企業の従業員数が欠損しがちなため）。「従業員数不明を含める」を外すと除外できます。また電話番号はgBizINFOに含まれないため、架電用CSVの電話番号欄は空です。';
+      note.classList.remove('hidden');
+    } else {
+      note.classList.add('hidden');
+    }
+
+    const fmtYen = (v) => v == null || v === '' ? '-' : '¥' + Number(v).toLocaleString();
+    document.getElementById('lb-tbody').innerHTML = (job.companies || []).map(c =>
+      `<tr>
+        <td>${c.name || '-'}</td>
+        <td>${c.prefecture || '-'}</td>
+        <td style="font-size:12px">${c.location || '-'}</td>
+        <td>${fmtYen(c.capital_stock)}</td>
+        <td>${c.employee_number ?? '-'}</td>
+        <td style="font-size:12px">${c.industry || '-'}</td>
+        <td style="font-size:12px;color:var(--gray-400)">${c.match_reason || '-'}</td>
+      </tr>`
+    ).join('');
+  },
+
+  download(fmt) {
+    if (!this.currentJob) return;
+    window.location.href = '/api/list/jobs/' + this.currentJob + '/export?fmt=' + fmt;
+  }
+};
 
 // ===== Calls =====
 const Calls = {

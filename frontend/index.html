@@ -29,6 +29,10 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         スクリプト管理
       </a>
+      <a class="nav-item" data-page="listbuilder">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        リスト作成
+      </a>
       <a class="nav-item" data-page="calls">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
         架電管理
@@ -146,6 +150,18 @@
           </div>
 
           <div class="card">
+            <div class="card-title">gBizINFO（企業リスト作成）</div>
+            <div class="form-group">
+              <label>APIトークン</label>
+              <input type="password" name="gbizinfo_api_token" placeholder="経産省 gBizINFO のWeb API利用申請で無料取得">
+              <span class="hint" style="display:block;margin-top:6px;color:var(--gray-400);font-size:12px;">
+                <a href="https://info.gbiz.go.jp/hojin/various_registration/form" target="_blank" style="color:var(--primary)">info.gbiz.go.jp のAPI利用申請</a>
+                でトークンを無料発行できます（商用利用可）。未設定でもデモデータで動作確認できます。
+              </span>
+            </div>
+          </div>
+
+          <div class="card">
             <div class="card-title">Firebase（データベース）</div>
             <div class="form-row">
               <div class="form-group">
@@ -201,6 +217,114 @@
       <div class="page-body">
         <div class="script-list" id="script-list">
           <div class="loading"><div class="spinner"></div>読み込み中...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== List Builder ========== -->
+    <div id="page-listbuilder" class="page hidden">
+      <div class="page-header">
+        <h2>リスト作成</h2>
+        <p>依頼文をそのまま貼るだけ。条件に合う企業リストをgBizINFOから作成します</p>
+      </div>
+      <div class="page-body">
+        <div class="card">
+          <div class="card-title">① 依頼文を入力</div>
+          <div class="form-group">
+            <textarea id="lb-inquiry" rows="5" placeholder="例）工務店、不動産のリスト作成をお願いしたくお繋ぎいただきました！&#10;規模感は、従業員数10-20名、資本金1000万円以下、東京と神奈川で1000件程お願いできますと幸いです。"></textarea>
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-primary" onclick="ListBuilder.parse()">条件を読み取る</button>
+            <button class="btn btn-secondary" onclick="ListBuilder.fillSample()">サンプル文を入れる</button>
+          </div>
+        </div>
+
+        <div class="card hidden" id="lb-criteria-card">
+          <div class="card-title">② 抽出された条件（編集できます）</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>業種（カンマ区切り）</label>
+              <input type="text" id="lb-industries" placeholder="工務店, 不動産">
+            </div>
+            <div class="form-group">
+              <label>都道府県（カンマ区切り）</label>
+              <input type="text" id="lb-prefectures" placeholder="東京都, 神奈川県">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>社名検索キーワード（カンマ区切り・業種名が社名に含まれる会社を集めます）</label>
+            <input type="text" id="lb-keywords" placeholder="工務店, 建設, 住宅, 不動産, ホーム">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>従業員数（下限）</label>
+              <input type="number" id="lb-emp-min" placeholder="10">
+            </div>
+            <div class="form-group">
+              <label>従業員数（上限）</label>
+              <input type="number" id="lb-emp-max" placeholder="20">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>資本金・上限（円）</label>
+              <input type="number" id="lb-cap-max" placeholder="10000000">
+            </div>
+            <div class="form-group">
+              <label>目標件数</label>
+              <input type="number" id="lb-count" placeholder="1000">
+            </div>
+          </div>
+
+          <div class="card" style="background:var(--gray-50, #f9fafb);box-shadow:none;border:1px solid var(--gray-200);margin-bottom:16px;">
+            <div class="card-title" style="font-size:13px;">詳細オプション</div>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
+              <input type="checkbox" id="lb-enrich" checked style="width:auto;">
+              各社の従業員数・業種・URLを詳細APIで取得する（精度↑・時間↑）
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
+              <input type="checkbox" id="lb-unknown" checked style="width:auto;">
+              従業員数が不明な会社もリストに含める（件数確保のため推奨）
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
+              <input type="checkbox" id="lb-strict-cap" checked style="width:auto;">
+              資本金の上限で厳密に絞る（外すと資本金未登録の会社も対象に）
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+              <input type="checkbox" id="lb-demo" style="width:auto;">
+              デモデータで試す（gBizINFOトークン未設定でも動作確認できます）
+            </label>
+          </div>
+
+          <div class="btn-group">
+            <button class="btn btn-success" onclick="ListBuilder.build()">③ リストを作成</button>
+          </div>
+        </div>
+
+        <div class="card hidden" id="lb-progress-card">
+          <div class="card-title">作成中...</div>
+          <div class="loading"><div class="spinner"></div><span id="lb-progress-text">検索を開始しています...</span></div>
+        </div>
+
+        <div class="card hidden" id="lb-result-card">
+          <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+            <span id="lb-result-title">作成結果</span>
+            <span class="btn-group" style="margin:0;">
+              <button class="btn btn-sm btn-primary" onclick="ListBuilder.download('detail')">詳細CSVをダウンロード</button>
+              <button class="btn btn-sm btn-secondary" onclick="ListBuilder.download('call')">架電用CSV（架電管理に読込可）</button>
+            </span>
+          </div>
+          <div id="lb-stats" class="stats-grid" style="margin-bottom:16px;"></div>
+          <div id="lb-note" class="hidden" style="font-size:12px;color:var(--gray-500);background:#fef3c7;padding:10px 12px;border-radius:8px;margin-bottom:12px;"></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>会社名</th><th>都道府県</th><th>所在地</th><th>資本金</th><th>従業員</th><th>業種</th><th>選定理由</th></tr>
+              </thead>
+              <tbody id="lb-tbody"></tbody>
+            </table>
+          </div>
+          <p style="font-size:12px;color:var(--gray-400);margin-top:8px;">※プレビューは先頭50件。全件はCSVに含まれます。</p>
         </div>
       </div>
     </div>

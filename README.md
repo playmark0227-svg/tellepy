@@ -1,6 +1,7 @@
 # telepy（テレパイ）- テレアポ代行AIシステム
 
 AIが自動で架電し、アポイントを取得したら人間にハンドオフするテレアポ代行サービスです。
+加えて、依頼文からターゲット企業を探す **リスト作成** 機能を備えています。
 
 ## システム構成
 
@@ -23,6 +24,55 @@ GREETING → QUALIFYING → PITCHING → CLOSING → HANDOFF（アポ確定）
 ```
 
 相手が「人間と話したい」と言った場合、即座にHANDOFF状態に遷移します。
+
+## リスト作成機能（企業リストビルダー）
+
+「工務店・不動産のリストを、従業員10-20名・資本金1000万円以下・東京と神奈川で1000件」——
+このような依頼文をそのまま貼り付けるだけで、条件に合う企業リストをCSVで作成します。
+管理画面の **リスト作成** タブから利用できます。
+
+### 仕組み
+
+```
+依頼文 → ① 条件抽出（Claude） → ② gBizINFOで検索 → ③ フィルタ/ランク付け → ④ CSV出力
+                                                                          ↓
+                                                              架電用CSV（架電管理へ）
+```
+
+1. **条件抽出**: 依頼文から 業種 / 従業員数 / 資本金 / 都道府県 / 件数 を構造化（Anthropic APIキーが
+   未設定でも、キーワードベースのヒューリスティックで動作します）
+2. **検索**: 経産省 **gBizINFO API**（無料・商用利用可）で、都道府県 × 社名キーワード（工務店・建設・
+   不動産・住宅…）で母集団を集め、資本金の上限で絞り込みます
+3. **詳細取得**（任意）: 各社の従業員数・業種・URLを取得して従業員数レンジで絞り込みます
+4. **CSV出力**: 詳細CSV（会社名・所在地・資本金・従業員数・業種・URL）と、telepy一括架電用CSV
+   （`phone_number, company_name`）を出力します
+
+### 使い方
+
+1. 設定画面で **gBizINFO APIトークン** を登録（[Web API利用申請](https://info.gbiz.go.jp/hojin/various_registration/form)で無料発行・商用可）
+2. リスト作成タブで依頼文を貼り「条件を読み取る」→ 内容を確認して「リストを作成」
+3. できたCSVをダウンロード。架電用CSVはそのまま架電管理のCSV一括架電に読み込めます
+
+> トークン未設定でも「デモデータで試す」で画面の動作を確認できます。
+
+### データソースの注意点
+
+- **従業員数**: gBizINFOの従業員数は行政手続データ由来のため、従業員10-20名規模の中小企業では
+  欠損（不明）が多いです。件数を確保するため「従業員数不明を含める」を既定でオンにしています
+  （確実に確認できた会社だけにしたい場合はオフに）
+- **電話番号**: gBizINFOに電話番号は含まれません。架電用CSVの電話番号欄は空欄で出力されるため、
+  別途エンリッチ（Web検索や他ソース）で補完してください
+- **業種**: gBizINFO v2は業種での検索パラメータを持たないため、社名キーワードで母集団を集める方式です。
+  「工務店」「不動産」など業種名が社名に含まれやすい業界と特に相性が良い設計です
+
+### API
+
+| メソッド | パス | 説明 |
+|---|---|---|
+| POST | `/api/list/parse` | 依頼文を検索条件に構造化 |
+| POST | `/api/list/build` | リスト作成ジョブを非同期で開始（`job_id`を返す） |
+| GET | `/api/list/jobs/{job_id}` | ジョブの進捗・結果（プレビュー）を取得 |
+| GET | `/api/list/jobs/{job_id}/export?fmt=detail\|call` | 完成リストをCSVでダウンロード |
 
 ## セットアップ手順
 
@@ -55,6 +105,7 @@ cp .env.example .env
 | `FIREBASE_CREDENTIALS_PATH` | Firebase認証JSONのパス | [Firebase Console](https://console.firebase.google.com/) |
 | `FIREBASE_PROJECT_ID` | FirebaseプロジェクトID | Firebase Console |
 | `SLACK_WEBHOOK_URL` | Slack Webhook URL | [Slack API](https://api.slack.com/messaging/webhooks) |
+| `GBIZINFO_API_TOKEN` | gBizINFO APIトークン（リスト作成機能用・無料） | [gBizINFO API利用申請](https://info.gbiz.go.jp/hojin/various_registration/form) |
 
 ### 3. Firebaseの設定
 

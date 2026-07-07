@@ -1,6 +1,7 @@
 """telepy - テレアポ代行AIシステム メインサーバー"""
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import logging
@@ -100,6 +101,7 @@ async def api_put_settings(request: Request):
     secret_keys = {
         "twilio_auth_token", "deepgram_api_key", "elevenlabs_api_key",
         "anthropic_api_key", "supabase_key", "slack_webhook_url",
+        "gbizinfo_api_token",
     }
     for key in current:
         val = new.get(key, "")
@@ -120,6 +122,7 @@ async def api_status():
         "Anthropic": is_configured("anthropic_api_key"),
         "Firebase": is_configured("firebase_credentials_path"),
         "Slack": is_configured("slack_webhook_url"),
+        "gBizINFO": is_configured("gbizinfo_api_token"),
     }
     today_calls = 0
     today_appointed = 0
@@ -286,6 +289,130 @@ async def api_batch_call(file: UploadFile = File(...)):
         except Exception as e:
             results.append({"phone_number": phone, "status": "error", "error": str(e)})
     return {"total": len(results), "results": results}
+
+
+# =====================================================
+# 管理API: リスト作成（企業リストビルダー）
+# =====================================================
+
+# 進行中・完了したリスト作成ジョブを管理（インメモリ）
+list_jobs: dict = {}
+
+
+class ParseRequest(BaseModel):
+    text: str
+
+
+class BuildRequest(BaseModel):
+    criteria: dict
+    enrich: bool = True
+    detail_budget: int = 1500
+    include_unknown_employee: bool = True
+    strict_capital: bool = True
+    demo: bool = False
+
+
+@app.post("/api/list/parse")
+async def api_list_parse(req: ParseRequest):
+    """依頼文を検索条件に構造化する"""
+    from list_builder import InquiryParser
+    parser = InquiryParser()
+    criteria = await parser.parse(req.text)
+    return criteria.to_dict()
+
+
+async def _run_build_job(job_id: str, req: BuildRequest):
+    from list_builder import (
+        SearchCriteria, GBizClient, ListBuilder, to_csv, to_call_csv,
+    )
+    job = list_jobs[job_id]
+    try:
+        criteria = SearchCriteria.from_dict(req.criteria)
+        builder = ListBuilder(GBizClient())
+
+        async def on_progress(p: dict):
+            job["progress"] = p
+
+        job["status"] = "running"
+        companies, stats = await builder.build(
+            criteria,
+            enrich=req.enrich,
+            detail_budget=req.detail_budget,
+            include_unknown_employee=req.include_unknown_employee,
+            strict_capital=req.strict_capital,
+            demo=req.demo,
+            progress=on_progress,
+        )
+        job["status"] = "done"
+        job["companies"] = [c.to_dict() for c in companies]
+        job["stats"] = stats.__dict__
+        job["csv"] = to_csv(companies)
+        job["call_csv"] = to_call_csv(companies)
+        job["count"] = len(companies)
+    except Exception as e:
+        logger.exception("リスト作成ジョブ失敗: %s", job_id)
+        job["status"] = "error"
+        job["error"] = str(e)
+
+
+@app.post("/api/list/build")
+async def api_list_build(req: BuildRequest):
+    """リスト作成ジョブを非同期で開始する"""
+    import uuid
+    job_id = uuid.uuid4().hex[:12]
+    list_jobs[job_id] = {
+        "id": job_id,
+        "status": "queued",
+        "progress": {},
+        "companies": [],
+        "stats": {},
+        "count": 0,
+    }
+    # 古いジョブを整理（最新20件だけ保持）
+    if len(list_jobs) > 20:
+        for old in list(list_jobs)[:-20]:
+            list_jobs.pop(old, None)
+    asyncio.create_task(_run_build_job(job_id, req))
+    return {"job_id": job_id, "status": "queued"}
+
+
+@app.get("/api/list/jobs/{job_id}")
+async def api_list_job(job_id: str, preview: int = 50):
+    """ジョブの進捗・結果を取得する（companiesは先頭preview件のみ）"""
+    job = list_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+    return {
+        "id": job["id"],
+        "status": job["status"],
+        "progress": job.get("progress", {}),
+        "stats": job.get("stats", {}),
+        "count": job.get("count", 0),
+        "error": job.get("error"),
+        "companies": job.get("companies", [])[:preview],
+    }
+
+
+@app.get("/api/list/jobs/{job_id}/export")
+async def api_list_export(job_id: str, fmt: str = "detail"):
+    """完成したリストをCSVでダウンロードする（fmt=detail|call）"""
+    from fastapi.responses import Response
+    job = list_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+    if job["status"] != "done":
+        raise HTTPException(status_code=409, detail="ジョブが完了していません")
+    if fmt == "call":
+        content = job.get("call_csv", "")
+        filename = f"call_list_{job_id}.csv"
+    else:
+        content = job.get("csv", "")
+        filename = f"company_list_{job_id}.csv"
+    return Response(
+        content=content.encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # =====================================================
