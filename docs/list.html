@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>telepy - リスト作成プレビュー</title>
+  <title>telepy - リスト作成</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -31,7 +31,7 @@
       </a>
     </nav>
     <div class="sidebar-footer">
-      telepy v1.0.0 (Preview)
+      telepy v1.0.0
     </div>
   </aside>
 
@@ -40,14 +40,14 @@
     <div id="page-listbuilder" class="page">
       <div class="page-header">
         <h2>リスト作成</h2>
-        <p>依頼文をそのまま貼るだけ。条件に合う企業リストを作成します</p>
+        <p>依頼文を貼って、手元のCSVから条件に合う企業リストを作成します</p>
       </div>
       <div class="page-body">
 
-        <div style="font-size:13px;color:#92400e;background:#fef3c7;padding:12px 14px;border-radius:10px;margin-bottom:16px;line-height:1.6;">
-          🔎 <strong>これはブラウザ上で動くプレビュー版です（デモデータ）。</strong>
-          UIと操作の流れを確認できます。実際にgBizINFOから本物の企業データを取得するには、
-          Pythonバックエンド（<code>python main.py</code>）とgBizINFO APIトークンが必要です。
+        <div style="font-size:13px;color:#166534;background:#dcfce7;padding:12px 14px;border-radius:10px;margin-bottom:16px;line-height:1.6;">
+          🔒 <strong>すべてブラウザの中だけで処理します。</strong>
+          選んだCSVはどこにもアップロードされず、あなたのPC内で検索されます（サーバー・API不要）。
+          gBizINFOの全件CSVや国税庁の法人番号CSVをそのまま読み込めます。
         </div>
 
         <div class="card">
@@ -74,7 +74,7 @@
             </div>
           </div>
           <div class="form-group">
-            <label>社名検索キーワード（カンマ区切り）</label>
+            <label>社名検索キーワード（カンマ区切り・業種名が社名に含まれる会社を集めます）</label>
             <input type="text" id="lb-keywords" placeholder="工務店, 建設, 住宅, 不動産, ホーム">
           </div>
           <div class="form-row">
@@ -97,9 +97,54 @@
               <input type="number" id="lb-count" placeholder="1000">
             </div>
           </div>
-          <div class="btn-group">
-            <button class="btn btn-success" onclick="LB.build()">③ リストを作成（デモ）</button>
+
+          <div class="card" style="background:#f9fafb;box-shadow:none;border:1px solid var(--gray-200);margin-bottom:16px;">
+            <div class="card-title" style="font-size:13px;">詳細オプション</div>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
+              <input type="checkbox" id="lb-unknown" checked style="width:auto;">
+              従業員数が不明な会社もリストに含める（件数確保のため推奨）
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+              <input type="checkbox" id="lb-strict-cap" checked style="width:auto;">
+              資本金の上限で厳密に絞る（外すと資本金未登録の会社も対象に）
+            </label>
           </div>
+        </div>
+
+        <div class="card hidden" id="lb-data-card">
+          <div class="card-title">③ 検索するCSVを選ぶ</div>
+          <div class="drop-zone" id="lb-drop"
+               ondragover="event.preventDefault();this.classList.add('dragover')"
+               ondragleave="this.classList.remove('dragover')"
+               ondrop="LB.handleDrop(event)"
+               onclick="document.getElementById('lb-file').click()"
+               style="cursor:pointer;">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto;display:block;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <p id="lb-file-label">CSVファイルをドラッグ＆ドロップ、またはクリックして選択</p>
+            <span class="hint">gBizINFO一括CSV / 国税庁 法人番号CSV / 手持ちのCSV（列名は自動判別）</span>
+          </div>
+          <input type="file" id="lb-file" accept=".csv,.txt" style="display:none" onchange="LB.handleFile(this.files[0])">
+          <div class="form-row" style="margin-top:12px;">
+            <div class="form-group">
+              <label>文字コード</label>
+              <select id="lb-encoding">
+                <option value="auto">自動判別</option>
+                <option value="utf-8">UTF-8</option>
+                <option value="shift_jis">Shift_JIS</option>
+              </select>
+            </div>
+            <div class="form-group" style="display:flex;align-items:flex-end;">
+              <button class="btn btn-secondary" onclick="LB.useSample()" style="width:100%;">同梱サンプルCSVで試す</button>
+            </div>
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-success" id="lb-run" onclick="LB.build()">④ リストを作成</button>
+          </div>
+        </div>
+
+        <div class="card hidden" id="lb-progress-card">
+          <div class="card-title">検索中...</div>
+          <div class="loading"><div class="spinner"></div><span id="lb-progress-text">CSVを読み込んでいます...</span></div>
         </div>
 
         <div class="card hidden" id="lb-result-card">
@@ -111,15 +156,16 @@
             </span>
           </div>
           <div id="lb-stats" class="stats-grid" style="margin-bottom:16px;"></div>
+          <div id="lb-note" class="hidden" style="font-size:12px;color:var(--gray-500);background:#fef3c7;padding:10px 12px;border-radius:8px;margin-bottom:12px;"></div>
           <div class="table-wrap">
             <table>
               <thead>
-                <tr><th>会社名</th><th>都道府県</th><th>所在地</th><th>資本金</th><th>従業員</th><th>業種</th></tr>
+                <tr><th>会社名</th><th>都道府県</th><th>所在地</th><th>資本金</th><th>従業員</th><th>業種</th><th>電話番号</th></tr>
               </thead>
               <tbody id="lb-tbody"></tbody>
             </table>
           </div>
-          <p style="font-size:12px;color:var(--gray-400);margin-top:8px;">※プレビュー表示は先頭50件。全件はCSVに含まれます。電話番号はgBizINFOに無いため架電用CSVでは空欄です。</p>
+          <p style="font-size:12px;color:var(--gray-400);margin-top:8px;">※プレビュー表示は先頭50件。全件はCSVに含まれます。</p>
         </div>
 
       </div>
@@ -128,11 +174,10 @@
 </div>
 
 <script>
-/* telepy リスト作成 - GitHub Pages 用クライアントサイド・デモ
-   本物のデータ取得は list_builder.py（Pythonバックエンド）が担当します。
-   ここは同じロジックをJSに移植し、デモデータで画面の流れを再現するものです。 */
+/* telepy リスト作成 - ブラウザ内 CSV ストリーミング検索（サーバー・API不要）
+   list_builder.py（Pythonバックエンド）と同じ検索ロジックをブラウザで実行する。
+   選んだCSVはアップロードされず、すべてこのページ内で処理される。 */
 
-// 都道府県名 → JIS X 0401 コード
 var PREFECTURE_CODES = {
   "北海道":"01","青森県":"02","岩手県":"03","宮城県":"04","秋田県":"05","山形県":"06","福島県":"07",
   "茨城県":"08","栃木県":"09","群馬県":"10","埼玉県":"11","千葉県":"12","東京都":"13","神奈川県":"14",
@@ -151,6 +196,21 @@ var INDUSTRY_KEYWORD_PRESETS = {
   "建築": ["建築","設計","工務店","建設"]
 };
 
+// list_builder.py の _COLUMN_ALIASES と対応
+var COLUMN_ALIASES = {
+  corporate_number: ["法人番号","corporate_number","corporatenumber","houjin_bangou","法人番号(13桁)"],
+  name: ["法人名","商号又は名称","商号","名称","会社名","企業名","name","corporate_name","company_name"],
+  location: ["所在地","本社所在地","住所","location","address","本店所在地"],
+  postal_code: ["郵便番号","postal_code","postalcode","zip"],
+  capital_stock: ["資本金","資本金(円)","資本金額","資本金（円）","capital_stock","capitalstock","capital"],
+  employee_number: ["従業員数","従業員","従業員数(人)","従業員数（人）","employee_number","employeenumber","employees"],
+  industry: ["業種","業種分類","事業概要","industry"],
+  founding_year: ["設立年","設立年月日","創業年","設立","founding_year","date_of_establishment"],
+  representative_name: ["代表者名","代表者","representative_name","representative"],
+  company_url: ["url","企業ホームページ","ホームページ","会社url","company_url","website","ｕｒｌ"],
+  phone_number: ["電話番号","tel","電話","phone_number","phone","ｔｅｌ"]
+};
+
 function toast(message, type) {
   type = type || 'success';
   var container = document.getElementById('toasts');
@@ -167,6 +227,32 @@ function dedupe(arr) {
   return out;
 }
 
+function normHeader(name) {
+  return (name || "").replace(/﻿/g, "").replace(/[ 　]/g, "").trim().toLowerCase();
+}
+
+function asInt(v) {
+  if (v == null || v === "") return null;
+  var s = String(v).replace(/[^0-9\-]/g, "");
+  if (s === "" || s === "-") return null;
+  var n = parseInt(s, 10);
+  return isNaN(n) ? null : n;
+}
+
+function asYear(v) {
+  if (v == null || v === "") return null;
+  var m = String(v).match(/(\d{4})/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function prefectureFromLocation(loc) {
+  if (!loc) return "";
+  for (var full in PREFECTURE_CODES) {
+    if (loc.indexOf(full) === 0) return full;
+  }
+  return "";
+}
+
 function parseCapital(text, suffix) {
   var m = text.match(new RegExp("資本金[^\\d]{0,6}?(\\d[\\d,\\.]*)\\s*(億|万)?\\s*円?\\s*" + suffix));
   if (!m) return null;
@@ -176,116 +262,240 @@ function parseCapital(text, suffix) {
   return Math.round(num);
 }
 
-// list_builder.py の InquiryParser._parse_heuristic / _backfill を移植
 function parseHeuristic(text) {
-  var c = {
-    industries: [], name_keywords: [], prefectures: [],
-    employee_min: null, employee_max: null, capital_min: null, capital_max: null,
-    target_count: 100
-  };
-
-  // 業種
+  var c = { industries: [], name_keywords: [], prefectures: [],
+    employee_min: null, employee_max: null, capital_min: null, capital_max: null, target_count: 100 };
   for (var ind in INDUSTRY_KEYWORD_PRESETS) {
     if (text.indexOf(ind) !== -1) c.industries.push(ind);
   }
-
-  // 都道府県
   for (var full in PREFECTURE_CODES) {
     var stem = full.replace(/[都道府県]$/, '');
     if (text.indexOf(full) !== -1 || (stem.length >= 2 && text.indexOf(stem) !== -1)) {
       if (c.prefectures.indexOf(full) === -1) c.prefectures.push(full);
     }
   }
-
-  // 従業員数レンジ
   var empRange = text.match(/従業員[数]?[^\d]{0,6}?(\d+)\s*[-〜~ー]\s*(\d+)/);
-  if (empRange) {
-    c.employee_min = parseInt(empRange[1], 10);
-    c.employee_max = parseInt(empRange[2], 10);
-  } else {
+  if (empRange) { c.employee_min = parseInt(empRange[1], 10); c.employee_max = parseInt(empRange[2], 10); }
+  else {
     var mMax = text.match(/従業員[数]?[^\d]{0,6}?(\d+)\s*(?:名|人)?\s*以下/);
     var mMin = text.match(/従業員[数]?[^\d]{0,6}?(\d+)\s*(?:名|人)?\s*以上/);
     if (mMax) c.employee_max = parseInt(mMax[1], 10);
     if (mMin) c.employee_min = parseInt(mMin[1], 10);
   }
-
-  // 資本金
   c.capital_max = parseCapital(text, "以下");
   c.capital_min = parseCapital(text, "以上");
-
-  // 件数
   var mCount = text.match(/(\d[\d,]*)\s*(?:件|社)/);
   if (mCount) c.target_count = parseInt(mCount[1].replace(/,/g, ''), 10);
-
-  // backfill
   if (!c.target_count || c.target_count <= 0) c.target_count = 100;
-  c.target_count = Math.min(c.target_count, 5000);
+  c.target_count = Math.min(c.target_count, 100000);
   if (c.name_keywords.length === 0) {
     var kws = [];
     for (var i = 0; i < c.industries.length; i++) {
-      var preset = INDUSTRY_KEYWORD_PRESETS[c.industries[i]] || [c.industries[i]];
-      kws = kws.concat(preset);
+      kws = kws.concat(INDUSTRY_KEYWORD_PRESETS[c.industries[i]] || [c.industries[i]]);
     }
     for (var j = 0; j < c.industries.length; j++) {
       if (kws.indexOf(c.industries[j]) === -1) kws.push(c.industries[j]);
     }
     c.name_keywords = dedupe(kws);
   }
-  if (c.industries.length === 0 && c.name_keywords.length > 0) {
-    c.industries = [c.name_keywords[0]];
-  }
+  if (c.industries.length === 0 && c.name_keywords.length > 0) c.industries = [c.name_keywords[0]];
   return c;
 }
 
-// list_builder.py の _demo_companies を移植
-function demoCompanies(criteria) {
-  var prefs = criteria.prefectures.length ? criteria.prefectures : ["東京都", "神奈川県"];
-  var industries = criteria.industries.length ? criteria.industries : ["工務店", "不動産"];
-  var suffixes = {
-    "工務店": ["工務店","建設","住宅","ホーム","リフォーム"],
-    "不動産": ["不動産","住宅販売","エステート","地所","ハウジング"]
-  };
-  var cities = {
-    "東京都": ["新宿区","世田谷区","大田区","足立区","練馬区","杉並区"],
-    "神奈川県": ["横浜市港北区","川崎市中原区","相模原市中央区","藤沢市","厚木市"]
-  };
-  var baseNames = ["山田","佐藤","鈴木","高橋","田中","渡辺","伊藤","中村","小林","加藤"];
-  var repNames = ["太郎","一郎","健","誠","浩"];
-  var empMin = criteria.employee_min || 10;
-  var empMax = criteria.employee_max || 20;
-  var capMax = criteria.capital_max || 10000000;
-
-  var companies = [];
-  var target = Math.min(criteria.target_count || 100, 2000);
-  var i = 0;
-  while (companies.length < target) {
-    var pref = prefs[i % prefs.length];
-    var industry = industries[i % industries.length];
-    var sfxList = suffixes[industry] || [industry];
-    var sfx = sfxList[i % sfxList.length];
-    var base = baseNames[i % baseNames.length];
-    var cityList = cities[pref] || ["中央区"];
-    var city = cityList[i % cityList.length];
-    var emp = empMin + (i % (Math.max(empMax - empMin, 1) + 1));
-    var cap = Math.min(3000000 + (i % 8) * 1000000, capMax);
-    companies.push({
-      corporate_number: String(1000000000000 + i),
-      name: "株式会社" + base + sfx,
-      prefecture: pref,
-      location: pref + city + (1 + i % 5) + "-" + (1 + i % 20) + "-" + (1 + i % 30),
-      postal_code: ("00" + (100 + i % 200)).slice(-3) + "-" + ("000" + (1000 + i % 9000)).slice(-4),
-      capital_stock: cap,
-      employee_number: emp,
-      industry: industry,
-      founding_year: 1985 + (i % 35),
-      representative_name: base + " " + repNames[i % repNames.length],
-      company_url: "https://example-" + i + ".co.jp",
-      phone_number: "",
-      match_reason: "デモデータ"
-    });
-    i++;
+function buildColmap(headerArr) {
+  var norm = {};
+  for (var i = 0; i < headerArr.length; i++) norm[normHeader(headerArr[i])] = i;
+  var map = {};
+  for (var canon in COLUMN_ALIASES) {
+    var aliases = COLUMN_ALIASES[canon];
+    for (var j = 0; j < aliases.length; j++) {
+      var k = normHeader(aliases[j]);
+      if (k in norm) { map[canon] = norm[k]; break; }
+    }
   }
-  return companies;
+  return map;
+}
+
+function rowToCompany(record, colmap) {
+  function g(field) {
+    var idx = colmap[field];
+    return (idx != null && idx < record.length) ? (record[idx] || "").trim() : "";
+  }
+  var location = g("location");
+  return {
+    corporate_number: g("corporate_number"),
+    name: g("name"),
+    location: location,
+    postal_code: g("postal_code"),
+    prefecture: prefectureFromLocation(location),
+    capital_stock: asInt(g("capital_stock")),
+    employee_number: asInt(g("employee_number")),
+    industry: g("industry"),
+    founding_year: asYear(g("founding_year")),
+    representative_name: g("representative_name"),
+    company_url: g("company_url"),
+    phone_number: g("phone_number"),
+    match_reason: ""
+  };
+}
+
+function matchesCriteria(comp, criteria, opts) {
+  if (criteria.name_keywords.length) {
+    var hit = false;
+    for (var i = 0; i < criteria.name_keywords.length; i++) {
+      var kw = criteria.name_keywords[i];
+      if (kw && comp.name.indexOf(kw) !== -1) { hit = true; break; }
+    }
+    if (!hit) return false;
+  }
+  if (criteria.prefectures.length) {
+    var pref = comp.prefecture || prefectureFromLocation(comp.location);
+    if (criteria.prefectures.indexOf(pref) === -1) return false;
+    comp.prefecture = pref;
+  }
+  if (comp.capital_stock != null) {
+    if (criteria.capital_max != null && comp.capital_stock > criteria.capital_max) return false;
+    if (criteria.capital_min != null && comp.capital_stock < criteria.capital_min) return false;
+  } else if (opts.strictCapital && (criteria.capital_max != null || criteria.capital_min != null)) {
+    return false;
+  }
+  if (comp.employee_number != null) {
+    if (criteria.employee_min != null && comp.employee_number < criteria.employee_min) return false;
+    if (criteria.employee_max != null && comp.employee_number > criteria.employee_max) return false;
+    comp.match_reason = "属性一致（従業員数確認済み）";
+  } else {
+    if (!opts.includeUnknownEmployee && (criteria.employee_min != null || criteria.employee_max != null)) return false;
+    comp.match_reason = "従業員数不明（社名・地域一致）";
+  }
+  return true;
+}
+
+function rankKey(c, criteria) {
+  var emp;
+  if (c.employee_number != null) {
+    var inRange = true;
+    if (criteria.employee_min != null && c.employee_number < criteria.employee_min) inRange = false;
+    if (criteria.employee_max != null && c.employee_number > criteria.employee_max) inRange = false;
+    emp = inRange ? 0 : 1;
+  } else { emp = 2; }
+  return [emp, c.capital_stock != null ? 0 : 1, c.company_url ? 0 : 1, c.name];
+}
+
+function rankAndTrim(companies, criteria) {
+  companies.sort(function(a, b) {
+    var ka = rankKey(a, criteria), kb = rankKey(b, criteria);
+    for (var i = 0; i < ka.length; i++) {
+      if (ka[i] < kb[i]) return -1;
+      if (ka[i] > kb[i]) return 1;
+    }
+    return 0;
+  });
+  return companies.slice(0, criteria.target_count);
+}
+
+// --- CSV ストリーミングパーサ（引用符・改行入りフィールド対応） ---
+function makeSearcher(criteria, opts) {
+  var field = "", record = [], inQuotes = false, pendingClose = false;
+  var header = null, colmap = null;
+  var results = [];
+  var scanned = 0, stop = false;
+
+  function pushField() { record.push(field); field = ""; }
+  function endRecord() {
+    pushField();
+    if (header === null) {
+      header = record;
+      colmap = buildColmap(header);
+    } else if (!(record.length === 1 && record[0] === "")) {
+      scanned++;
+      var comp = rowToCompany(record, colmap);
+      if (comp.name && matchesCriteria(comp, criteria, opts)) {
+        results.push(comp);
+        if (results.length >= opts.cap) stop = true;
+      }
+    }
+    record = [];
+  }
+  function feed(chunk) {
+    for (var i = 0; i < chunk.length; i++) {
+      var ch = chunk[i];
+      if (pendingClose) {
+        pendingClose = false;
+        if (ch === '"') { field += '"'; continue; }
+        inQuotes = false;
+      }
+      if (inQuotes) {
+        if (ch === '"') pendingClose = true;
+        else field += ch;
+      } else {
+        if (ch === '"') inQuotes = true;
+        else if (ch === ',') pushField();
+        else if (ch === '\n') endRecord();
+        else if (ch === '\r') { /* ignore */ }
+        else field += ch;
+      }
+    }
+  }
+  function flush() {
+    if (pendingClose) { pendingClose = false; inQuotes = false; }
+    if (field !== "" || record.length > 0) endRecord();
+  }
+  return {
+    feed: feed, flush: flush,
+    isStop: function() { return stop; },
+    getScanned: function() { return scanned; },
+    getResults: function() { return results; },
+    hasHeaderMatch: function() { return colmap && (colmap.name != null); }
+  };
+}
+
+function scoreHeaderLine(line) {
+  var cells = line.split(",");
+  var map = buildColmap(cells);
+  return Object.keys(map).length;
+}
+
+async function resolveEncoding(file, choice) {
+  if (choice === "utf-8" || choice === "shift_jis") return choice;
+  try {
+    var buf = await file.slice(0, 65536).arrayBuffer();
+    var u8 = new Uint8Array(buf);
+    var utf = new TextDecoder("utf-8").decode(u8).split("\n")[0];
+    var sjis = new TextDecoder("shift_jis").decode(u8).split("\n")[0];
+    return scoreHeaderLine(sjis) > scoreHeaderLine(utf) ? "shift_jis" : "utf-8";
+  } catch (e) {
+    return "utf-8";
+  }
+}
+
+async function searchFile(file, criteria, opts) {
+  var encoding = await resolveEncoding(file, opts.encoding);
+  var searcher = makeSearcher(criteria, opts);
+  var streamable = (typeof file.stream === "function") && (typeof TextDecoderStream !== "undefined");
+  if (streamable) {
+    var reader = file.stream().pipeThrough(new TextDecoderStream(encoding)).getReader();
+    while (true) {
+      var res = await reader.read();
+      if (res.done) break;
+      searcher.feed(res.value);
+      opts.onProgress(searcher.getScanned(), searcher.getResults().length);
+      if (searcher.isStop()) { try { await reader.cancel(); } catch (e) {} break; }
+    }
+  } else {
+    // 古いブラウザ向けフォールバック（ファイル全体を読み込む）
+    var buf2 = await file.arrayBuffer();
+    var text = new TextDecoder(encoding).decode(new Uint8Array(buf2));
+    searcher.feed(text);
+    opts.onProgress(searcher.getScanned(), searcher.getResults().length);
+  }
+  searcher.flush();
+  return {
+    companies: rankAndTrim(searcher.getResults(), criteria),
+    scanned: searcher.getScanned(),
+    total: searcher.getResults().length,
+    encoding: encoding,
+    headerMatched: searcher.hasHeaderMatch()
+  };
 }
 
 function csvEscape(v) {
@@ -333,6 +543,7 @@ function downloadText(filename, text, mime) {
 
 var LB = {
   companies: [],
+  _file: null,
 
   fillSample: function() {
     document.getElementById('lb-inquiry').value =
@@ -352,7 +563,8 @@ var LB = {
     document.getElementById('lb-cap-max').value = c.capital_max == null ? '' : c.capital_max;
     document.getElementById('lb-count').value = c.target_count || 100;
     document.getElementById('lb-criteria-card').classList.remove('hidden');
-    toast('条件を読み取りました。内容を確認してください');
+    document.getElementById('lb-data-card').classList.remove('hidden');
+    toast('条件を読み取りました。CSVを選んでください');
   },
 
   collectCriteria: function() {
@@ -375,51 +587,114 @@ var LB = {
     };
   },
 
-  build: function() {
+  handleDrop: function(e) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) this.handleFile(e.dataTransfer.files[0]);
+  },
+
+  handleFile: function(file) {
+    if (!file) return;
+    this._file = file;
+    document.getElementById('lb-file-label').textContent =
+      '選択中: ' + file.name + '（' + (file.size / 1048576).toFixed(1) + 'MB）';
+  },
+
+  useSample: async function() {
+    try {
+      var res = await fetch('sample_companies.csv');
+      if (!res.ok) throw new Error('サンプルの取得に失敗');
+      var text = await res.text();
+      this._file = new File([text], 'sample_companies.csv', { type: 'text/csv' });
+      document.getElementById('lb-file-label').textContent = '選択中: sample_companies.csv（同梱サンプル）';
+      toast('サンプルCSVを読み込みました');
+    } catch (e) {
+      toast('サンプルの読み込みに失敗しました: ' + e.message, 'error');
+    }
+  },
+
+  build: async function() {
     var criteria = this.collectCriteria();
     if (criteria.name_keywords.length === 0 && criteria.industries.length === 0) {
       toast('業種または社名キーワードを指定してください', 'error'); return;
     }
-    this.companies = demoCompanies(criteria);
-    this.render(criteria);
-    toast(this.companies.length + '社を生成しました（デモ）');
+    if (!this._file) { toast('検索するCSVを選んでください（または「同梱サンプルCSVで試す」）', 'error'); return; }
+
+    var opts = {
+      encoding: document.getElementById('lb-encoding').value,
+      includeUnknownEmployee: document.getElementById('lb-unknown').checked,
+      strictCapital: document.getElementById('lb-strict-cap').checked,
+      cap: Math.min(Math.max(criteria.target_count * 3, 2000), 100000),
+      onProgress: function(scanned, found) {
+        document.getElementById('lb-progress-text').textContent =
+          'PC内で検索中... ' + scanned.toLocaleString() + '行を走査 / 該当 ' + found + ' 社';
+      }
+    };
+
+    document.getElementById('lb-result-card').classList.add('hidden');
+    document.getElementById('lb-progress-card').classList.remove('hidden');
+    document.getElementById('lb-progress-text').textContent = 'CSVを読み込んでいます...';
+    document.getElementById('lb-run').disabled = true;
+
+    try {
+      var out = await searchFile(this._file, criteria, opts);
+      this.companies = out.companies;
+      document.getElementById('lb-progress-card').classList.add('hidden');
+      if (!out.headerMatched) {
+        toast('CSVの列を認識できませんでした。ヘッダ行や文字コードをご確認ください', 'error');
+      }
+      this.renderResult(criteria, out);
+    } catch (e) {
+      document.getElementById('lb-progress-card').classList.add('hidden');
+      toast('検索エラー: ' + e.message, 'error');
+    } finally {
+      document.getElementById('lb-run').disabled = false;
+    }
   },
 
-  render: function(criteria) {
+  renderResult: function(criteria, out) {
     document.getElementById('lb-result-card').classList.remove('hidden');
-    document.getElementById('lb-result-title').textContent = '作成結果：' + this.companies.length + ' 社（デモデータ）';
+    document.getElementById('lb-result-title').textContent = '作成結果：' + this.companies.length + ' 社（PC内検索）';
 
+    var unknownEmp = this.companies.filter(function(c) { return c.employee_number == null; }).length;
     var statItems = [
       ['取得件数', this.companies.length],
-      ['目標件数', criteria.target_count],
-      ['対象都道府県', criteria.prefectures.join('・') || '-'],
-      ['業種', criteria.industries.join('・') || '-']
+      ['走査行数', out.scanned.toLocaleString()],
+      ['該当総数', out.total],
+      ['従業員数不明', unknownEmp]
     ];
     document.getElementById('lb-stats').innerHTML = statItems.map(function(pair) {
       return '<div class="stat-card"><div class="label">' + pair[0] + '</div><div class="value" style="font-size:20px">' + pair[1] + '</div></div>';
     }).join('');
 
+    var note = document.getElementById('lb-note');
+    var notes = [];
+    if (this.companies.length === 0) notes.push('該当0件でした。社名キーワードや都道府県、文字コードの指定を見直してみてください。');
+    if (unknownEmp > 0) notes.push('従業員数が不明な会社が含まれます（そのCSVに従業員数の列が無い/空の場合）。');
+    var hasPhone = this.companies.some(function(c) { return c.phone_number; });
+    if (!hasPhone && this.companies.length > 0) notes.push('このCSVには電話番号が無いため、架電用CSVの電話番号欄は空です。');
+    if (notes.length) { note.textContent = 'ℹ ' + notes.join(' '); note.classList.remove('hidden'); }
+    else note.classList.add('hidden');
+
     var fmtYen = function(v) { return v == null ? '-' : '¥' + Number(v).toLocaleString(); };
     document.getElementById('lb-tbody').innerHTML = this.companies.slice(0, 50).map(function(c) {
       return '<tr>' +
-        '<td>' + c.name + '</td>' +
-        '<td>' + c.prefecture + '</td>' +
-        '<td style="font-size:12px">' + c.location + '</td>' +
+        '<td>' + (c.name || '-') + '</td>' +
+        '<td>' + (c.prefecture || '-') + '</td>' +
+        '<td style="font-size:12px">' + (c.location || '-') + '</td>' +
         '<td>' + fmtYen(c.capital_stock) + '</td>' +
         '<td>' + (c.employee_number == null ? '-' : c.employee_number) + '</td>' +
-        '<td style="font-size:12px">' + c.industry + '</td>' +
+        '<td style="font-size:12px">' + (c.industry || '-') + '</td>' +
+        '<td style="font-size:12px">' + (c.phone_number || '-') + '</td>' +
       '</tr>';
     }).join('');
     document.getElementById('lb-result-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   },
 
   download: function(fmt) {
-    if (!this.companies.length) return;
-    if (fmt === 'call') {
-      downloadText('call_list_demo.csv', toCallCsv(this.companies), 'text/csv');
-    } else {
-      downloadText('company_list_demo.csv', toDetailCsv(this.companies), 'text/csv');
-    }
+    if (!this.companies.length) { toast('先にリストを作成してください', 'error'); return; }
+    if (fmt === 'call') downloadText('call_list.csv', toCallCsv(this.companies), 'text/csv');
+    else downloadText('company_list.csv', toDetailCsv(this.companies), 'text/csv');
   }
 };
 </script>
