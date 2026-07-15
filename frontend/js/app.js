@@ -417,7 +417,7 @@ const ListBuilder = {
     } else if (p.phase === 'search') {
       el.textContent = `検索中... 候補 ${p.found || 0} 社（${p.detail || ''}）`;
     } else if (p.phase === 'enrich') {
-      el.textContent = `詳細情報を取得中... ${p.enriched || 0} / ${p.found || 0} 社`;
+      el.textContent = `🔎 HP・電話番号を無料で補完中... ${(p.found || 0).toLocaleString()} / ${(p.target || 0).toLocaleString()} 社を処理（電話取得 ${p.enriched || 0} 件）`;
     } else {
       el.textContent = '仕上げ中...';
     }
@@ -427,7 +427,7 @@ const ListBuilder = {
     document.getElementById('lb-progress-card').classList.add('hidden');
     document.getElementById('lb-result-card').classList.remove('hidden');
     const stats = job.stats || {};
-    const modeLbl = { local: 'ローカルCSV', api: 'gBizINFO API', demo: 'デモ' }[job.mode] || '';
+    const modeLbl = { local: 'ローカルCSV', local_web: '自前データ＋無料エンリッチ', web: 'Web自動探索', api: 'gBizINFO API', demo: 'デモ' }[job.mode] || '';
     document.getElementById('lb-result-title').textContent = `作成結果：${job.count} 社` + (modeLbl ? `（${modeLbl}）` : '');
 
     const statItems = [
@@ -454,7 +454,9 @@ const ListBuilder = {
       } else if (target && job.count >= target) {
         msgs.push(`✅ 目標の ${target} 社に到達しました。`);
       }
-      if (isWeb) {
+      if (job.mode === 'local_web') {
+        msgs.push('ℹ 自前の企業母集団（国税庁 法人番号データ等のローカルCSV）で社名・地域を絞り、無料のWeb検索で各社の公式HP・電話番号を補完しています。外部の有料APIは使っていません（従量課金ゼロ）。従業員数・資本金は会社概要に記載がある場合のみ取得します。');
+      } else if (isWeb) {
         msgs.push('ℹ Web上の公開HPから会社名・電話番号・住所を抽出しています。従業員数・資本金は会社概要に記載がある場合のみ取得（無い会社は不明のまま含めます）。抽出はページ構成により取りこぼしがあります。');
       } else if ((stats.unknown_employee || 0) > 0) {
         msgs.push('ℹ 従業員数が不明な会社が含まれます（gBizINFOは小規模企業の従業員数が欠損しがち）。電話番号はgBizINFOに無いため架電用CSVの電話欄は空です。');

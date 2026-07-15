@@ -7,15 +7,18 @@
 
 import asyncio
 
-from list_builder import SearchCriteria
+from list_builder import Company, SearchCriteria
 from web_finder import (
     DuckDuckGoProvider,
     WebFinder,
+    _name_matches,
     domain_of,
     extract_company,
+    find_contact_url,
     find_profile_url,
     generate_queries,
     is_excluded,
+    normalize_company_name,
 )
 
 SAMPLE_HP = """
@@ -179,6 +182,129 @@ def test_web_find_with_fake_provider():
     print(f"✓ 探索ループ（モックWeb）で目標到達（{len(companies)}社・電話番号付き）")
 
 
+# tel:リンクがある例（本文先頭のフリーダイヤルより tel: の代表番号を優先）
+TEL_LINK_HP = """
+<html><head><title>株式会社サンプル建設</title></head><body>
+<p>フリーダイヤル 0120-000-111（受付窓口）</p>
+<p>本社代表: <a href="tel:03-3999-8888">お電話はこちら</a></p>
+</body></html>
+"""
+
+# 電話番号がトップに無く、お問い合わせページにある例
+TOP_NO_PHONE = """
+<html><head><title>ミライ工務店｜埼玉</title></head><body>
+<p>埼玉県さいたま市大宮区1-1</p>
+<a href="/contact/">お問い合わせはこちら</a>
+</body></html>
+"""
+CONTACT_PAGE = """
+<html><head><title>お問い合わせ｜ミライ工務店</title></head><body>
+<p>電話：<a href="tel:048-555-1234">048-555-1234</a></p>
+</body></html>
+"""
+
+
+def test_tel_link_phone():
+    c = extract_company("https://sample-kensetsu.co.jp/", TEL_LINK_HP)
+    # tel:リンクの番号を優先して拾う（フリーダイヤルの誤検出を避ける）
+    assert c.phone_number.replace(" ", "") == "03-3999-8888", c.phone_number
+    print("✓ tel:リンクを最優先で電話番号抽出")
+
+
+def test_find_contact_url():
+    assert find_contact_url("https://mirai.co.jp/", TOP_NO_PHONE) == "https://mirai.co.jp/contact/"
+    print("✓ お問い合わせページのURL解決")
+
+
+def test_normalize_company_name():
+    assert normalize_company_name("株式会社 まごころ工務店") == "まごころ工務店"
+    assert normalize_company_name("（株）ハマノ不動産") == "ハマノ不動産"
+    assert normalize_company_name("有限会社 山田・建設") == "山田建設"
+    print("✓ 会社名の正規化（法人格・記号・空白除去）")
+
+
+def test_name_matches():
+    assert _name_matches("株式会社まごころ工務店", "まごころ工務店") is True
+    assert _name_matches("ハマノ不動産", "株式会社ハマノ不動産｜横浜") is True  # 包含関係で一致
+    assert _name_matches("株式会社まごころ工務店", "田中不動産") is False
+    assert _name_matches("株式会社A", "株式会社A") is False  # 正規化後3文字未満は不一致
+    print("✓ 会社名の一致判定（誤エンリッチ防止）")
+
+
+class _StubProvider:
+    async def search(self, client, query, max_results=20):
+        return []
+
+
+def test_contact_page_follow():
+    """トップに電話が無く、お問い合わせページを辿って電話番号を補完する"""
+    import httpx
+
+    def handler(request):
+        url = str(request.url)
+        body = CONTACT_PAGE if "contact" in url else TOP_NO_PHONE
+        return httpx.Response(200, text=body, headers={"content-type": "text/html; charset=utf-8"})
+
+    async def run():
+        finder = WebFinder(provider=_StubProvider())
+        transport = httpx.MockTransport(handler)
+        async with httpx.AsyncClient(transport=transport, follow_redirects=True) as client:
+            return await finder._fetch_and_extract(client, "https://mirai.co.jp/", True)
+
+    comp = asyncio.run(run())
+    assert comp is not None
+    assert comp.phone_number.replace(" ", "") == "048-555-1234", comp.phone_number
+    print("✓ お問い合わせページを辿って電話番号を補完")
+
+
+def test_enrich_companies():
+    """社名だけの母集団に、無料Web検索でHP・電話番号を補完する"""
+    import httpx
+
+    class FakeProvider:
+        async def search(self, client, query, max_results=20):
+            # 「まごころ工務店」の検索はHPを返す。ダミー社名の検索は無関係サイト。
+            if "まごころ" in query:
+                return ["https://magokoro-koumuten.co.jp/"]
+            return ["https://unrelated.example.com/"]
+
+    def handler(request):
+        url = str(request.url)
+        if "magokoro" in url:
+            body = SAMPLE_HP
+        else:
+            body = "<html><head><title>無関係な会社</title></head><body>別の会社です</body></html>"
+        return httpx.Response(200, text=body, headers={"content-type": "text/html; charset=utf-8"})
+
+    async def run():
+        finder = WebFinder(provider=FakeProvider())
+        transport = httpx.MockTransport(handler)
+        orig = httpx.AsyncClient
+
+        def patched(*a, **k):
+            k["transport"] = transport
+            return orig(*a, **k)
+
+        httpx.AsyncClient = patched
+        try:
+            companies = [
+                Company(name="株式会社まごころ工務店", prefecture="東京都", location="東京都世田谷区"),
+                Company(name="実在しないダミー商店", prefecture="東京都"),
+            ]
+            return await finder.enrich_companies(companies)
+        finally:
+            httpx.AsyncClient = orig
+
+    companies, stats = asyncio.run(run())
+    magokoro = companies[0]
+    assert magokoro.company_url == "https://magokoro-koumuten.co.jp/", magokoro.company_url
+    assert magokoro.phone_number.replace(" ", "") == "03-1234-5678", magokoro.phone_number
+    # 名前が一致しないサイトはエンリッチしない（company_urlは空のまま）
+    assert companies[1].company_url == "", companies[1].company_url
+    assert stats.enriched == 1, stats.enriched
+    print("✓ ローカル母集団の無料エンリッチ（社名一致のみHP採用）")
+
+
 if __name__ == "__main__":
     tests = [
         test_domain_of,
@@ -190,6 +316,12 @@ if __name__ == "__main__":
         test_ddg_parse,
         test_passes_filter,
         test_web_find_with_fake_provider,
+        test_tel_link_phone,
+        test_find_contact_url,
+        test_normalize_company_name,
+        test_name_matches,
+        test_contact_page_follow,
+        test_enrich_companies,
     ]
     for t in tests:
         t()

@@ -346,6 +346,24 @@ async def _run_build_job(job_id: str, req: BuildRequest):
                 strict_capital=req.strict_capital,
                 progress=on_progress,
             )
+        elif req.mode == "local_web":
+            # 自前の母集団（国税庁 法人番号データ等のローカルCSV）で社名・地域を絞り、
+            # 無料のWebエンリッチでHP・電話番号を補完する（従量課金ゼロが基本）
+            from web_finder import WebFinder
+            job["mode"] = "local_web"
+            builder = ListBuilder(GBizClient(), LocalDataSource())
+            companies, stats = await builder.build(
+                criteria,
+                mode="local",
+                include_unknown_employee=req.include_unknown_employee,
+                strict_capital=req.strict_capital,
+                progress=on_progress,
+            )
+            if req.enrich and companies:
+                companies, enrich_stats = await WebFinder().enrich_companies(
+                    companies, progress=on_progress,
+                )
+                stats.enriched = enrich_stats.enriched
         else:
             builder = ListBuilder(GBizClient(), LocalDataSource())
             job["mode"] = builder.resolve_mode("demo" if req.demo else req.mode)

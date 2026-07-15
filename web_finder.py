@@ -66,6 +66,13 @@ PROFILE_LINK_RE = re.compile(
     r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>(?:[^<]*)(?:会社概要|会社案内|会社情報|企業情報|company|about)',
     re.IGNORECASE,
 )
+# 電話番号は「お問い合わせ/アクセス」ページにしか無いことが多いので、そこも辿る
+CONTACT_LINK_RE = re.compile(
+    r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>(?:[^<]*)(?:お問い?合わせ|お問合せ|問い合わせ|contact|inquiry|アクセス|access|会社概要)',
+    re.IGNORECASE,
+)
+# tel: リンクは最も確実な電話番号ソース
+TEL_LINK_RE = re.compile(r'href=["\']tel:([+0-9().\- ]{9,})["\']', re.IGNORECASE)
 
 _PREF_ALT = "|".join(re.escape(p) for p in PREFECTURE_CODES)
 PREF_NEAR_POSTAL_RE = re.compile(r"〒?\s*\d{3}[-‐－ー]?\d{4}[^\n<]{0,8}?(" + _PREF_ALT + ")")
@@ -187,6 +194,16 @@ def _extract_employees(text: str):
     return _as_int(m.group(1).replace("，", ","))
 
 
+def _extract_phone_from_html(html_text: str, text: str) -> str:
+    """tel:リンクを最優先で、無ければ本文テキストから電話番号を拾う。"""
+    m = TEL_LINK_RE.search(html_text)
+    if m:
+        digits = re.sub(r"\D", "", m.group(1))
+        if 10 <= len(digits) <= 11:
+            return m.group(1).strip()
+    return _extract_phone(text)
+
+
 def extract_company(url: str, html_text: str) -> Company:
     """HPのHTMLから会社情報を抽出する。"""
     text = _clean_text(html_text)
@@ -195,7 +212,7 @@ def extract_company(url: str, html_text: str) -> Company:
         name=_company_name(html_text, url),
         location=location,
         prefecture=_extract_prefecture(text),
-        phone_number=_extract_phone(text),
+        phone_number=_extract_phone_from_html(html_text, text),
         capital_stock=_extract_capital(text),
         employee_number=_extract_employees(text),
         company_url=url,
@@ -203,12 +220,8 @@ def extract_company(url: str, html_text: str) -> Company:
     )
 
 
-def find_profile_url(base_url: str, html_text: str) -> str:
-    """会社概要ページへのリンクを見つけて絶対URLで返す。"""
-    m = PROFILE_LINK_RE.search(html_text)
-    if not m:
-        return ""
-    href = _html.unescape(m.group(1)).strip()
+def _resolve_url(base_url: str, href: str) -> str:
+    href = _html.unescape(href).strip()
     if href.startswith("http"):
         return href
     p = urlparse(base_url)
@@ -218,6 +231,55 @@ def find_profile_url(base_url: str, html_text: str) -> str:
         return f"{p.scheme}://{p.netloc}{href}"
     base = base_url.rsplit("/", 1)[0]
     return f"{base}/{href}"
+
+
+def find_profile_url(base_url: str, html_text: str) -> str:
+    """会社概要ページへのリンクを見つけて絶対URLで返す。"""
+    m = PROFILE_LINK_RE.search(html_text)
+    return _resolve_url(base_url, m.group(1)) if m else ""
+
+
+def find_contact_url(base_url: str, html_text: str) -> str:
+    """お問い合わせ/アクセスページへのリンクを見つけて絶対URLで返す（電話番号狙い）。"""
+    m = CONTACT_LINK_RE.search(html_text)
+    return _resolve_url(base_url, m.group(1)) if m else ""
+
+
+def _merge_company(dst: Company, src: Company) -> None:
+    """補助ページ(src)の情報で、欠けている項目だけ dst を埋める。"""
+    if dst.capital_stock is None:
+        dst.capital_stock = src.capital_stock
+    if dst.employee_number is None:
+        dst.employee_number = src.employee_number
+    if not dst.location:
+        dst.location = src.location
+    if not dst.prefecture:
+        dst.prefecture = src.prefecture
+    if not dst.phone_number:
+        dst.phone_number = src.phone_number
+
+
+def normalize_company_name(name: str) -> str:
+    """会社名を照合用に正規化（法人格・記号・空白を除去）。"""
+    if not name:
+        return ""
+    n = _html.unescape(name)
+    for token in ("株式会社", "有限会社", "合同会社", "合資会社", "合名会社",
+                  "(株)", "（株）", "(有)", "（有）", "㈱", "㈲"):
+        n = n.replace(token, "")
+    n = re.sub(r"[\s　・･,，.。()（）「」【】]", "", n)
+    return n.strip().lower()
+
+
+def _name_matches(a: str, b: str) -> bool:
+    """2つの会社名が実質同一かを、正規化後の包含関係でざっくり判定する。
+    検索結果のHPが本当にその会社のものかを確かめる（誤エンリッチ防止）。"""
+    na, nb = normalize_company_name(a), normalize_company_name(b)
+    if not na or not nb:
+        return False
+    short, long = (na, nb) if len(na) <= len(nb) else (nb, na)
+    # 短い方が3文字以上かつ長い方に含まれていれば同一とみなす
+    return len(short) >= 3 and short in long
 
 
 # 主要な市区（クエリの多様化用。1000件狙いで検索語を増やす）
@@ -426,18 +488,99 @@ class WebFinder:
         if fetch_profile and (comp.capital_stock is None or comp.employee_number is None or not comp.location):
             prof_url = find_profile_url(url, html_text)
             if prof_url and prof_url != url:
-                try:
-                    r2 = await client.get(prof_url, headers={"User-Agent": USER_AGENT}, timeout=15.0)
-                    if r2.status_code < 400:
-                        p = extract_company(prof_url, r2.text)
-                        comp.capital_stock = comp.capital_stock if comp.capital_stock is not None else p.capital_stock
-                        comp.employee_number = comp.employee_number if comp.employee_number is not None else p.employee_number
-                        comp.location = comp.location or p.location
-                        comp.prefecture = comp.prefecture or p.prefecture
-                        comp.phone_number = comp.phone_number or p.phone_number
-                except httpx.HTTPError:
-                    pass
+                p = await self._fetch_extract_one(client, prof_url)
+                if p:
+                    _merge_company(comp, p)
+        # 電話番号がまだ取れていなければ、お問い合わせ/アクセスページも辿る
+        if fetch_profile and not comp.phone_number:
+            contact_url = find_contact_url(url, html_text)
+            if contact_url and contact_url != url:
+                p = await self._fetch_extract_one(client, contact_url)
+                if p:
+                    _merge_company(comp, p)
         return comp
+
+    async def _fetch_extract_one(self, client, url):
+        """1ページ取得して会社情報を抽出（補助ページ用・失敗時None）。"""
+        try:
+            r = await client.get(url, headers={"User-Agent": USER_AGENT}, timeout=15.0)
+            if r.status_code >= 400:
+                return None
+            return extract_company(url, r.text)
+        except httpx.HTTPError:
+            return None
+
+    # ------------------------------------------------------------------
+    # ローカル母集団の無料エンリッチ（社名+住所 → HP/電話番号）
+    # ------------------------------------------------------------------
+
+    async def enrich_companies(
+        self,
+        companies: list[Company],
+        *,
+        progress=None,
+        concurrency: int = 4,
+    ) -> tuple[list[Company], BuildStats]:
+        """社名（＋所在地）だけ分かっている会社に、公開HPと電話番号を無料で補完する。
+
+        既にcompany_urlが分かっていれば検索せずそのHPを取得（検索コストゼロ）。
+        無ければ無料のWeb検索で公式HPを探し、社名が一致したものだけ採用する。
+        既存の社名・所在地（＝母集団の正）は上書きしない。
+        """
+        stats = BuildStats()
+        total = len(companies)
+        sem = asyncio.Semaphore(concurrency)
+
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            async def one(comp):
+                async with sem:
+                    await self._enrich_one(client, comp)
+                stats.candidates += 1
+                if comp.phone_number:
+                    stats.enriched += 1
+                if progress and stats.candidates % 10 == 0:
+                    await progress({
+                        "phase": "enrich", "found": stats.candidates,
+                        "enriched": stats.enriched, "target": total,
+                    })
+            await asyncio.gather(*(one(c) for c in companies))
+
+        stats.matched = total
+        if progress:
+            await progress({
+                "phase": "done", "found": total, "matched": total,
+                "enriched": stats.enriched, "target": total,
+            })
+        return companies, stats
+
+    async def _enrich_one(self, client, comp: Company):
+        page = None
+        if comp.company_url:
+            page = await self._fetch_and_extract(client, comp.company_url, True)
+        else:
+            query = f"{comp.name} {comp.prefecture or ''} 公式".strip()
+            try:
+                urls = await self.provider.search(client, query, max_results=10)
+            except Exception:
+                urls = []
+            for u in urls:
+                if is_excluded(u):
+                    continue
+                cand = await self._fetch_and_extract(client, u, True)
+                if cand and _name_matches(comp.name, cand.name):
+                    comp.company_url = u
+                    page = cand
+                    break
+        if page:
+            if not comp.phone_number:
+                comp.phone_number = page.phone_number
+            if not comp.company_url:
+                comp.company_url = page.company_url
+            if comp.capital_stock is None:
+                comp.capital_stock = page.capital_stock
+            if comp.employee_number is None:
+                comp.employee_number = page.employee_number
+            comp.match_reason = comp.match_reason or "HP・電話番号を補完"
 
     @staticmethod
     def _passes(c: Company, criteria: SearchCriteria, include_unknown_employee: bool, strict_capital: bool) -> bool:
