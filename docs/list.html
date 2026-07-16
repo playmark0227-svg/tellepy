@@ -128,10 +128,12 @@
                onclick="document.getElementById('lb-file').click()"
                style="cursor:pointer;">
             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto;display:block;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            <p id="lb-file-label">CSVファイルをドラッグ＆ドロップ、またはクリックして選択</p>
-            <span class="hint">gBizINFO一括CSV / 国税庁 法人番号 全件CSV（ヘッダ無し30列も自動判別・zipは解凍してから） / 手持ちのCSV</span>
+            <p id="lb-file-label">CSVファイルをドラッグ＆ドロップ、またはクリックして選択（複数OK・一都三県なら4県分まとめて）</p>
+            <span class="hint">国税庁 法人番号「全件データ」CSV（ヘッダ無し30列を自動判別・zipは解凍してから） / gBizINFO一括CSV / 手持ちのCSV<br>
+            ⚠ 国税庁サイトの「検索画面からのダウンロード」は上限10,000件です。件数が足りない場合は
+            <a href="https://www.houjin-bangou.nta.go.jp/download/zenken/" target="_blank" rel="noopener">全件データのダウンロード</a>から都道府県別zipを取得してください（東京都だけで約110万法人入っています）</span>
           </div>
-          <input type="file" id="lb-file" accept=".csv,.txt" style="display:none" onchange="LB.handleFile(this.files[0])">
+          <input type="file" id="lb-file" accept=".csv,.txt" multiple style="display:none" onchange="LB.handleFiles(this.files)">
           <div class="form-row" style="margin-top:12px;">
             <div class="form-group">
               <label>文字コード</label>
@@ -580,6 +582,40 @@ async function searchFile(file, criteria, opts) {
   };
 }
 
+/* 複数CSV（例: 一都三県の県別ファイル4つ）をまとめて検索し、結果を統合する */
+async function searchFiles(files, criteria, opts) {
+  var all = [], scanned = 0, total = 0, unmatched = [], dataHasCapital = true;
+  for (var i = 0; i < files.length; i++) {
+    var file = files[i];
+    var label = files.length > 1 ? '(' + (i + 1) + '/' + files.length + ') ' + file.name + ' — ' : '';
+    var baseScanned = scanned, baseFound = all.length;
+    var perOpts = Object.assign({}, opts, {
+      onProgress: (function(lbl, bs, bf) {
+        return function(s, f) { opts.onProgress(bs + s, bf + f, lbl); };
+      })(label, baseScanned, baseFound)
+    });
+    var out = await searchFile(file, criteria, perOpts);
+    scanned += out.scanned;
+    total += out.total;
+    if (!out.headerMatched) unmatched.push(file.name);
+    if (!out.dataHasCapital) dataHasCapital = false;
+    all = all.concat(out.companies);
+  }
+  // 法人番号（無ければ社名+所在地）で重複を除去してから再ランク
+  var seen = {}, deduped = [];
+  for (var j = 0; j < all.length; j++) {
+    var key = all[j].corporate_number || (all[j].name + '|' + all[j].location);
+    if (!seen[key]) { seen[key] = 1; deduped.push(all[j]); }
+  }
+  return {
+    companies: rankAndTrim(deduped, criteria),
+    scanned: scanned,
+    total: total,
+    unmatchedFiles: unmatched,
+    dataHasCapital: dataHasCapital
+  };
+}
+
 function csvEscape(v) {
   if (v === null || v === undefined) return "";
   v = String(v);
@@ -677,7 +713,7 @@ async function aiLookupCompany(apiKey, comp) {
 
 var LB = {
   companies: [],
-  _file: null,
+  _files: null,
   _aiAbort: false,
   _aiCalls: 0,
   _lastCriteria: null,
@@ -728,14 +764,19 @@ var LB = {
   handleDrop: function(e) {
     e.preventDefault();
     e.currentTarget.classList.remove('dragover');
-    if (e.dataTransfer.files[0]) this.handleFile(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files.length) this.handleFiles(e.dataTransfer.files);
   },
 
-  handleFile: function(file) {
-    if (!file) return;
-    this._file = file;
-    document.getElementById('lb-file-label').textContent =
-      '選択中: ' + file.name + '（' + (file.size / 1048576).toFixed(1) + 'MB）';
+  handleFiles: function(fileList) {
+    var files = Array.prototype.slice.call(fileList || []);
+    if (!files.length) return;
+    this._files = files;
+    var totalMb = files.reduce(function(s, f) { return s + f.size; }, 0) / 1048576;
+    var label = files.length === 1
+      ? '選択中: ' + files[0].name + '（' + totalMb.toFixed(1) + 'MB）'
+      : '選択中: ' + files.length + 'ファイル（合計' + totalMb.toFixed(1) + 'MB）: ' +
+        files.map(function(f) { return f.name; }).join(', ');
+    document.getElementById('lb-file-label').textContent = label;
   },
 
   useSample: async function() {
@@ -743,7 +784,7 @@ var LB = {
       var res = await fetch('sample_companies.csv');
       if (!res.ok) throw new Error('サンプルの取得に失敗');
       var text = await res.text();
-      this._file = new File([text], 'sample_companies.csv', { type: 'text/csv' });
+      this._files = [new File([text], 'sample_companies.csv', { type: 'text/csv' })];
       document.getElementById('lb-file-label').textContent = '選択中: sample_companies.csv（同梱サンプル）';
       toast('サンプルCSVを読み込みました');
     } catch (e) {
@@ -756,16 +797,16 @@ var LB = {
     if (criteria.name_keywords.length === 0 && criteria.industries.length === 0) {
       toast('業種または社名キーワードを指定してください', 'error'); return;
     }
-    if (!this._file) { toast('検索するCSVを選んでください（または「同梱サンプルCSVで試す」）', 'error'); return; }
+    if (!this._files || !this._files.length) { toast('検索するCSVを選んでください（または「同梱サンプルCSVで試す」）', 'error'); return; }
 
     var opts = {
       encoding: document.getElementById('lb-encoding').value,
       includeUnknownEmployee: document.getElementById('lb-unknown').checked,
       strictCapital: document.getElementById('lb-strict-cap').checked,
       cap: Math.min(Math.max(criteria.target_count * 3, 2000), 100000),
-      onProgress: function(scanned, found) {
+      onProgress: function(scanned, found, label) {
         document.getElementById('lb-progress-text').textContent =
-          'PC内で検索中... ' + scanned.toLocaleString() + '行を走査 / 該当 ' + found + ' 社';
+          (label || '') + 'PC内で検索中... ' + scanned.toLocaleString() + '行を走査 / 該当 ' + found + ' 社';
       }
     };
 
@@ -775,11 +816,11 @@ var LB = {
     document.getElementById('lb-run').disabled = true;
 
     try {
-      var out = await searchFile(this._file, criteria, opts);
+      var out = await searchFiles(this._files, criteria, opts);
       this.companies = out.companies;
       document.getElementById('lb-progress-card').classList.add('hidden');
-      if (!out.headerMatched) {
-        toast('CSVの列を認識できませんでした。ヘッダ行や文字コードをご確認ください', 'error');
+      if (out.unmatchedFiles.length) {
+        toast('列を認識できないCSVがあります: ' + out.unmatchedFiles.join(', ') + '（ヘッダ行や文字コードをご確認ください）', 'error');
       }
       this.renderResult(criteria, out);
     } catch (e) {
