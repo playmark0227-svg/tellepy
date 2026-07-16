@@ -305,6 +305,117 @@ def test_enrich_companies():
     print("✓ ローカル母集団の無料エンリッチ（社名一致のみHP採用）")
 
 
+def test_ai_extractor_gating():
+    """AIフォールバックはキー未設定なら無効（＝従量課金ゼロ）。JSONパースも確認。"""
+    from web_finder import AIExtractor, _parse_json_obj
+    assert AIExtractor(api_key="").enabled is False       # キー無し→AIを叩かない
+    assert AIExtractor(api_key="sk-xxx").enabled is True
+    assert _parse_json_obj('{"best_index": 1, "phone_number": "03-1-2"}')["best_index"] == 1
+    # 前後に説明文が付いても最初のJSONを拾う
+    assert _parse_json_obj('答え: {"best_index": -1, "phone_number": ""} です')["best_index"] == -1
+    assert _parse_json_obj("not json") is None
+    print("✓ AIフォールバックの有効/無効判定（キー未設定なら従量課金ゼロ）")
+
+
+def test_ai_fallback_enrich():
+    """名寄せで確定できない会社だけAI(モック)で確認し、HP・電話番号を補完する"""
+    import httpx
+
+    class FakeProvider:
+        async def search(self, client, query, max_results=20):
+            return ["https://kaitai-test.co.jp/"]
+
+    def handler(request):
+        # 社名がタイトルに出ず、電話番号も無いページ（無料の名寄せ・正規表現では確定できない）
+        body = ("<html><head><title>解体・スクラップのケンセツ</title></head>"
+                "<body><p>東京都墨田区で解体工事を承ります</p></body></html>")
+        return httpx.Response(200, text=body, headers={"content-type": "text/html"})
+
+    class FakeAI:
+        """Haikuの代わりに、候補の先頭を公式と判定して電話番号を返すモック。"""
+        MAX_CANDIDATES = 3
+        enabled = True
+
+        def __init__(self):
+            self.calls = 0
+
+        async def pick_and_extract(self, name, candidates):
+            self.calls += 1
+            return {"url": candidates[0][0], "phone": "03-5555-0000"}
+
+    async def run():
+        ai = FakeAI()
+        finder = WebFinder(provider=FakeProvider())
+        transport = httpx.MockTransport(handler)
+        orig = httpx.AsyncClient
+
+        def patched(*a, **k):
+            k["transport"] = transport
+            return orig(*a, **k)
+
+        httpx.AsyncClient = patched
+        try:
+            companies = [Company(name="株式会社テスト解体", prefecture="東京都")]
+            comps, stats = await finder.enrich_companies(companies, ai_extractor=ai)
+        finally:
+            httpx.AsyncClient = orig
+        return comps, stats, ai
+
+    comps, stats, ai = asyncio.run(run())
+    c = comps[0]
+    assert c.company_url == "https://kaitai-test.co.jp/", c.company_url
+    assert c.phone_number == "03-5555-0000", c.phone_number
+    assert ai.calls == 1, ai.calls           # 迷った1社だけAIを叩いた
+    assert stats.ai_calls == 1, stats.ai_calls
+    print("✓ AIフォールバック（迷った会社だけHaikuで確認・電話番号を補完）")
+
+
+def test_ai_not_used_when_free_resolves():
+    """無料の名寄せ＋tel:で確定できる会社にはAIを一切使わない（＝コストをかけない）"""
+    import httpx
+
+    class FakeProvider:
+        async def search(self, client, query, max_results=20):
+            return ["https://magokoro-koumuten.co.jp/"]
+
+    def handler(request):
+        return httpx.Response(200, text=SAMPLE_HP, headers={"content-type": "text/html"})
+
+    class CountingAI:
+        MAX_CANDIDATES = 3
+        enabled = True
+
+        def __init__(self):
+            self.calls = 0
+
+        async def pick_and_extract(self, name, candidates):
+            self.calls += 1
+            return None
+
+    async def run():
+        ai = CountingAI()
+        finder = WebFinder(provider=FakeProvider())
+        transport = httpx.MockTransport(handler)
+        orig = httpx.AsyncClient
+
+        def patched(*a, **k):
+            k["transport"] = transport
+            return orig(*a, **k)
+
+        httpx.AsyncClient = patched
+        try:
+            companies = [Company(name="株式会社まごころ工務店", prefecture="東京都")]
+            comps, stats = await finder.enrich_companies(companies, ai_extractor=ai)
+        finally:
+            httpx.AsyncClient = orig
+        return comps, stats, ai
+
+    comps, stats, ai = asyncio.run(run())
+    assert comps[0].phone_number.replace(" ", "") == "03-1234-5678"
+    assert ai.calls == 0, ai.calls           # 無料で片付いたのでAIは未使用
+    print("✓ 無料で確定できる会社にはAIを使わない（従量課金を最小化）")
+
+
 if __name__ == "__main__":
     tests = [
         test_domain_of,
@@ -322,6 +433,9 @@ if __name__ == "__main__":
         test_name_matches,
         test_contact_page_follow,
         test_enrich_companies,
+        test_ai_extractor_gating,
+        test_ai_fallback_enrich,
+        test_ai_not_used_when_free_resolves,
     ]
     for t in tests:
         t()

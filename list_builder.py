@@ -639,6 +639,7 @@ class BuildStats:
     enriched: int = 0
     matched: int = 0
     unknown_employee: int = 0
+    ai_calls: int = 0  # AIフォールバックで実際にAPIを叩いた回数（従量課金の実数）
     demo: bool = False
 
 

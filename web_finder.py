@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import asyncio
 import html as _html
+import json
 import logging
+import os
 import re
 from dataclasses import dataclass
 from urllib.parse import unquote, urlparse
@@ -392,11 +394,109 @@ class SerperProvider(SearchProvider):
 
 
 def make_provider() -> SearchProvider:
-    import os
     key = os.environ.get("SEARCH_API_KEY", "")
     if key:
         return SerperProvider(key)
     return DuckDuckGoProvider()
+
+
+# ---------------------------------------------------------------------------
+# AIフォールバック（迷った会社だけをHaikuで確認・抽出する。従量課金を最小化）
+# ---------------------------------------------------------------------------
+
+_AI_SYSTEM = (
+    "あなたは企業の公式サイト判定と連絡先抽出のアシスタントです。"
+    "与えられた会社名と、検索で見つかったWebページ候補（本文抜粋）から、"
+    "その会社の公式サイトである候補を1つだけ選び、電話番号（日本の固定/フリーダイヤル/携帯）を"
+    "抽出します。必ず次のJSONだけを出力してください（前後に説明文を付けない）:\n"
+    '{"best_index": <該当候補の番号 or 該当なしは-1>, "phone_number": "<電話番号 or 空文字>"}'
+)
+
+
+def _parse_json_obj(text: str):
+    """モデル出力から最初のJSONオブジェクトを取り出す（緩めにパース）。"""
+    try:
+        return json.loads(text)
+    except Exception:
+        m = re.search(r"\{.*\}", text or "", re.DOTALL)
+        if m:
+            try:
+                return json.loads(m.group(0))
+            except Exception:
+                return None
+    return None
+
+
+class AIExtractor:
+    """正規表現/名寄せで判断がつかない会社だけを、AI(Haiku)で確認・抽出する。
+
+    - 既定モデルは Claude Haiku 4.5（現行で最安。$1/$5 per MTok）
+    - ANTHROPIC_API_KEY が無ければ enabled=False となり、一切APIを叩かない（＝従量課金ゼロ）
+    - 候補は最大3件・各本文1500字までに切り詰めて渡すので、1回あたりのコストは小さい
+    """
+
+    MODEL = "claude-haiku-4-5"
+    MAX_CANDIDATES = 3
+    SNIPPET_CHARS = 1500
+
+    def __init__(self, api_key: str = None, model: str = None):
+        self.api_key = api_key if api_key is not None else os.environ.get("ANTHROPIC_API_KEY", "")
+        self.model = model or self.MODEL
+        self._client = None
+        self.calls = 0  # 実際にAPIを叩いた回数（コスト可視化用）
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.api_key)
+
+    def _get_client(self):
+        if self._client is None:
+            from anthropic import AsyncAnthropic
+            self._client = AsyncAnthropic(api_key=self.api_key)
+        return self._client
+
+    async def pick_and_extract(self, company_name: str, candidates: list) -> dict:
+        """candidates: [(url, cleaned_text), ...] から公式HPを選び電話番号を抽出する。
+
+        戻り値: {"url": str, "phone": str} または None（該当なし/未設定/失敗時）。
+        """
+        if not self.enabled or not candidates:
+            return None
+        cands = candidates[: self.MAX_CANDIDATES]
+        blocks = []
+        for i, (url, text) in enumerate(cands):
+            snippet = (text or "")[: self.SNIPPET_CHARS]
+            blocks.append(f"[候補{i}] URL: {url}\n本文抜粋: {snippet}")
+        user = (
+            f"会社名: {company_name}\n\n"
+            "次の候補から、この会社の公式サイトを1つ選び、電話番号を抽出してください。"
+            "該当が無ければ best_index を -1 にしてください。\n\n"
+            + "\n\n".join(blocks)
+        )
+        try:
+            client = self._get_client()
+            resp = await client.messages.create(
+                model=self.model,
+                max_tokens=200,
+                system=_AI_SYSTEM,
+                messages=[{"role": "user", "content": user}],
+            )
+            self.calls += 1
+        except Exception as e:  # SDK未導入・キー不正・通信失敗など
+            logger.warning("AI抽出に失敗（無料分の結果のみ使用）: %s", e)
+            return None
+        text = ""
+        for b in resp.content:
+            if getattr(b, "type", "") == "text":
+                text = b.text
+                break
+        data = _parse_json_obj(text)
+        if not data:
+            return None
+        idx = data.get("best_index", -1)
+        if idx is None or idx < 0 or idx >= len(cands):
+            return None
+        return {"url": cands[idx][0], "phone": (data.get("phone_number") or "").strip()}
 
 
 # ---------------------------------------------------------------------------
@@ -476,14 +576,20 @@ class WebFinder:
         return companies, stats
 
     async def _fetch_and_extract(self, client, url, fetch_profile):
+        comp, _ = await self._fetch_and_extract_full(client, url, fetch_profile)
+        return comp
+
+    async def _fetch_and_extract_full(self, client, url, fetch_profile):
+        """(Company, トップページの本文テキスト) を返す。AIフォールバック用に本文も残す。"""
         try:
             resp = await client.get(url, headers={"User-Agent": USER_AGENT}, timeout=15.0)
             if resp.status_code >= 400 or "text/html" not in resp.headers.get("content-type", "text/html"):
-                return None
+                return None, ""
             html_text = resp.text
         except httpx.HTTPError:
-            return None
+            return None, ""
         comp = extract_company(url, html_text)
+        top_text = _clean_text(html_text)
         # 会社概要ページで資本金・従業員数・住所を補完
         if fetch_profile and (comp.capital_stock is None or comp.employee_number is None or not comp.location):
             prof_url = find_profile_url(url, html_text)
@@ -498,7 +604,7 @@ class WebFinder:
                 p = await self._fetch_extract_one(client, contact_url)
                 if p:
                     _merge_company(comp, p)
-        return comp
+        return comp, top_text
 
     async def _fetch_extract_one(self, client, url):
         """1ページ取得して会社情報を抽出（補助ページ用・失敗時None）。"""
@@ -520,12 +626,16 @@ class WebFinder:
         *,
         progress=None,
         concurrency: int = 4,
+        ai_extractor: "AIExtractor" = None,
     ) -> tuple[list[Company], BuildStats]:
         """社名（＋所在地）だけ分かっている会社に、公開HPと電話番号を無料で補完する。
 
         既にcompany_urlが分かっていれば検索せずそのHPを取得（検索コストゼロ）。
         無ければ無料のWeb検索で公式HPを探し、社名が一致したものだけ採用する。
         既存の社名・所在地（＝母集団の正）は上書きしない。
+
+        ai_extractor を渡すと、正規表現/名寄せで判断がつかなかった会社「だけ」を
+        Haikuで確認・抽出する（ハイブリッド）。大半は無料で片付くので従量課金は小さい。
         """
         stats = BuildStats()
         total = len(companies)
@@ -534,7 +644,7 @@ class WebFinder:
         async with httpx.AsyncClient(follow_redirects=True) as client:
             async def one(comp):
                 async with sem:
-                    await self._enrich_one(client, comp)
+                    await self._enrich_one(client, comp, ai_extractor)
                 stats.candidates += 1
                 if comp.phone_number:
                     stats.enriched += 1
@@ -542,21 +652,28 @@ class WebFinder:
                     await progress({
                         "phase": "enrich", "found": stats.candidates,
                         "enriched": stats.enriched, "target": total,
+                        "ai_calls": ai_extractor.calls if ai_extractor else 0,
                     })
             await asyncio.gather(*(one(c) for c in companies))
 
         stats.matched = total
+        if ai_extractor:
+            stats.ai_calls = ai_extractor.calls
         if progress:
             await progress({
                 "phase": "done", "found": total, "matched": total,
                 "enriched": stats.enriched, "target": total,
+                "ai_calls": stats.ai_calls,
             })
         return companies, stats
 
-    async def _enrich_one(self, client, comp: Company):
+    async def _enrich_one(self, client, comp: Company, ai_extractor: "AIExtractor" = None):
         page = None
+        candidates = []  # (url, top_text) 未解決の候補（AIフォールバック用）
         if comp.company_url:
-            page = await self._fetch_and_extract(client, comp.company_url, True)
+            page, text = await self._fetch_and_extract_full(client, comp.company_url, True)
+            if page and not page.phone_number:
+                candidates.append((comp.company_url, text))
         else:
             query = f"{comp.name} {comp.prefecture or ''} 公式".strip()
             try:
@@ -566,11 +683,18 @@ class WebFinder:
             for u in urls:
                 if is_excluded(u):
                     continue
-                cand = await self._fetch_and_extract(client, u, True)
-                if cand and _name_matches(comp.name, cand.name):
+                cand, text = await self._fetch_and_extract_full(client, u, True)
+                if not cand:
+                    continue
+                if _name_matches(comp.name, cand.name):
                     comp.company_url = u
                     page = cand
+                    if not cand.phone_number:
+                        candidates.append((u, text))  # 一致したが電話が無い→AIで拾う
                     break
+                # 名寄せで確定できない候補も、AIフォールバック用に控えておく
+                if len(candidates) < AIExtractor.MAX_CANDIDATES:
+                    candidates.append((u, text))
         if page:
             if not comp.phone_number:
                 comp.phone_number = page.phone_number
@@ -581,6 +705,19 @@ class WebFinder:
             if comp.employee_number is None:
                 comp.employee_number = page.employee_number
             comp.match_reason = comp.match_reason or "HP・電話番号を補完"
+
+        # 無料の範囲でHPが確定しない or 電話番号が取れなかった会社だけAIに確認させる
+        need_ai = ai_extractor and ai_extractor.enabled and candidates and (
+            not comp.company_url or not comp.phone_number
+        )
+        if need_ai:
+            result = await ai_extractor.pick_and_extract(comp.name, candidates)
+            if result:
+                if not comp.company_url and result.get("url"):
+                    comp.company_url = result["url"]
+                if not comp.phone_number and result.get("phone"):
+                    comp.phone_number = result["phone"]
+                comp.match_reason = comp.match_reason or "AIでHP・電話番号を確認"
 
     @staticmethod
     def _passes(c: Company, criteria: SearchCriteria, include_unknown_employee: bool, strict_capital: bool) -> bool:

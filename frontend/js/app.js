@@ -368,6 +368,7 @@ const ListBuilder = {
       enrich: document.getElementById('lb-enrich').checked,
       include_unknown_employee: document.getElementById('lb-unknown').checked,
       strict_capital: document.getElementById('lb-strict-cap').checked,
+      ai_fallback: document.getElementById('lb-ai-fallback').checked,
       detail_budget: 1500,
     };
     try {
@@ -417,7 +418,8 @@ const ListBuilder = {
     } else if (p.phase === 'search') {
       el.textContent = `検索中... 候補 ${p.found || 0} 社（${p.detail || ''}）`;
     } else if (p.phase === 'enrich') {
-      el.textContent = `🔎 HP・電話番号を無料で補完中... ${(p.found || 0).toLocaleString()} / ${(p.target || 0).toLocaleString()} 社を処理（電話取得 ${p.enriched || 0} 件）`;
+      const aiPart = p.ai_calls ? ` / AI確認 ${p.ai_calls} 件` : '';
+      el.textContent = `🔎 HP・電話番号を無料で補完中... ${(p.found || 0).toLocaleString()} / ${(p.target || 0).toLocaleString()} 社を処理（電話取得 ${p.enriched || 0} 件${aiPart}）`;
     } else {
       el.textContent = '仕上げ中...';
     }
@@ -436,6 +438,10 @@ const ListBuilder = {
       ['詳細取得', stats.enriched ?? '-'],
       ['従業員数不明', stats.unknown_employee ?? '-'],
     ];
+    // AIフォールバックを使ったモードでは、実際に叩いたAI回数（＝従量課金の実数）を表示
+    if (job.mode === 'local_web') {
+      statItems.push(['AI確認(有料)', stats.ai_calls ?? 0]);
+    }
     document.getElementById('lb-stats').innerHTML = statItems.map(([label, val]) =>
       `<div class="stat-card"><div class="label">${label}</div><div class="value">${val}</div></div>`
     ).join('');
@@ -455,7 +461,13 @@ const ListBuilder = {
         msgs.push(`✅ 目標の ${target} 社に到達しました。`);
       }
       if (job.mode === 'local_web') {
-        msgs.push('ℹ 自前の企業母集団（国税庁 法人番号データ等のローカルCSV）で社名・地域を絞り、無料のWeb検索で各社の公式HP・電話番号を補完しています。外部の有料APIは使っていません（従量課金ゼロ）。従業員数・資本金は会社概要に記載がある場合のみ取得します。');
+        const aiCalls = stats.ai_calls || 0;
+        let m = 'ℹ 自前の企業母集団（国税庁 法人番号データ等のローカルCSV）で社名・地域を絞り、無料のWeb検索で各社の公式HP・電話番号を補完しています。大半は無料で確定し、';
+        m += aiCalls > 0
+          ? `迷った ${aiCalls} 件だけをAI(Haiku)で確認しました（従量課金はこの件数ぶんだけ）。`
+          : 'AIによる確認は発生しませんでした（＝今回は外部の従量課金ゼロ）。';
+        m += '従業員数・資本金は会社概要に記載がある場合のみ取得します。';
+        msgs.push(m);
       } else if (isWeb) {
         msgs.push('ℹ Web上の公開HPから会社名・電話番号・住所を抽出しています。従業員数・資本金は会社概要に記載がある場合のみ取得（無い会社は不明のまま含めます）。抽出はページ構成により取りこぼしがあります。');
       } else if ((stats.unknown_employee || 0) > 0) {

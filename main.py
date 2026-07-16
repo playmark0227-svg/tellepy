@@ -305,11 +305,12 @@ class ParseRequest(BaseModel):
 
 class BuildRequest(BaseModel):
     criteria: dict
-    mode: str = "auto"  # auto | local | api | demo
+    mode: str = "auto"  # auto | web | local_web | local | api | demo
     enrich: bool = True
     detail_budget: int = 1500
     include_unknown_employee: bool = True
     strict_capital: bool = True
+    ai_fallback: bool = True  # 迷った会社だけAI(Haiku)で確認（キー未設定なら自動で無効）
     demo: bool = False
 
 
@@ -348,8 +349,9 @@ async def _run_build_job(job_id: str, req: BuildRequest):
             )
         elif req.mode == "local_web":
             # 自前の母集団（国税庁 法人番号データ等のローカルCSV）で社名・地域を絞り、
-            # 無料のWebエンリッチでHP・電話番号を補完する（従量課金ゼロが基本）
-            from web_finder import WebFinder
+            # 無料のWebエンリッチでHP・電話番号を補完する（従量課金ゼロが基本）。
+            # ai_fallback が有効かつANTHROPIC_API_KEYがあれば、迷った会社だけHaikuで確認する。
+            from web_finder import AIExtractor, WebFinder
             job["mode"] = "local_web"
             builder = ListBuilder(GBizClient(), LocalDataSource())
             companies, stats = await builder.build(
@@ -360,10 +362,12 @@ async def _run_build_job(job_id: str, req: BuildRequest):
                 progress=on_progress,
             )
             if req.enrich and companies:
+                ai = AIExtractor() if req.ai_fallback else None
                 companies, enrich_stats = await WebFinder().enrich_companies(
-                    companies, progress=on_progress,
+                    companies, progress=on_progress, ai_extractor=ai,
                 )
                 stats.enriched = enrich_stats.enriched
+                stats.ai_calls = enrich_stats.ai_calls
         else:
             builder = ListBuilder(GBizClient(), LocalDataSource())
             job["mode"] = builder.resolve_mode("demo" if req.demo else req.mode)

@@ -302,9 +302,13 @@
               <input type="checkbox" id="lb-unknown" checked style="width:auto;">
               従業員数が不明な会社もリストに含める（件数確保のため推奨）
             </label>
-            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
               <input type="checkbox" id="lb-strict-cap" checked style="width:auto;">
               資本金の上限で厳密に絞る（外すと資本金未登録の会社も対象に）
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+              <input type="checkbox" id="lb-ai-fallback" checked style="width:auto;">
+              迷った会社だけAI(Haiku)で確認してHP・電話番号を補完（要 ANTHROPIC_API_KEY。未設定なら自動で無効＝従量課金ゼロ）
             </label>
           </div>
 
