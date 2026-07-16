@@ -44,16 +44,18 @@
       </div>
       <div class="page-body">
 
-        <div style="font-size:13px;color:#92400e;background:#fef3c7;padding:12px 14px;border-radius:10px;margin-bottom:12px;line-height:1.6;">
-          🤖 <strong>「条件を入れたら1000件まで自動で探し続けるbot」は、ローカル版で動きます。</strong>
-          手元で <code>python main.py</code> を起動 → 管理画面「リスト作成」で、gBizINFOを自動巡回して
-          目標件数に達するまで探し続けます（ブラウザだけの静的ページは外部サイトを取得できない=CORS制約のため、
-          自動巡回はローカルのPythonが担当します）。
+        <div style="font-size:13px;color:#166534;background:#dcfce7;padding:12px 14px;border-radius:10px;margin-bottom:12px;line-height:1.6;">
+          🔒 <strong>このブラウザ版でできること（すべてPC内で処理・CSVはアップロードされません）</strong><br>
+          ① <strong>母集団の絞り込み（無料）</strong>: 国税庁の法人番号 全件CSV（ヘッダ無しでもOK）や
+          gBizINFO一括CSVを読み込み、業種キーワード×地域×規模で絞り込み<br>
+          ② <strong>HP・電話番号のAI補完（任意・従量課金）</strong>: 絞った会社を Claude Haiku＋Web検索で調査
+          （あなたのAPIキーで直接Anthropicへ接続。目安 <strong>約¥3/社</strong>）
         </div>
-        <div style="font-size:13px;color:#166534;background:#dcfce7;padding:12px 14px;border-radius:10px;margin-bottom:16px;line-height:1.6;">
-          🔒 <strong>このブラウザ版は、手元CSVの検索ツールです。</strong>
-          選んだCSVはどこにもアップロードされず、あなたのPC内で検索されます。
-          gBizINFOの全件CSVや国税庁の法人番号CSVをそのまま読み込めます。
+        <div style="font-size:13px;color:#92400e;background:#fef3c7;padding:12px 14px;border-radius:10px;margin-bottom:16px;line-height:1.6;">
+          💰 <strong>従量課金を最小にしたい場合はローカル版が最強です。</strong>
+          手元で <code>python main.py</code> を起動すると、無料のWeb検索（DuckDuckGo）で大半のHP・電話番号を補完し、
+          <strong>迷った会社だけ</strong>AIで確認します（1000件リストで数百円程度）。
+          ブラウザ単体は外部サイトを直接巡回できない（CORS制約）ため、無料巡回はローカルのPythonが担当します。
         </div>
 
         <div class="card">
@@ -127,7 +129,7 @@
                style="cursor:pointer;">
             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto;display:block;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             <p id="lb-file-label">CSVファイルをドラッグ＆ドロップ、またはクリックして選択</p>
-            <span class="hint">gBizINFO一括CSV / 国税庁 法人番号CSV / 手持ちのCSV（列名は自動判別）</span>
+            <span class="hint">gBizINFO一括CSV / 国税庁 法人番号 全件CSV（ヘッダ無し30列も自動判別・zipは解凍してから） / 手持ちのCSV</span>
           </div>
           <input type="file" id="lb-file" accept=".csv,.txt" style="display:none" onchange="LB.handleFile(this.files[0])">
           <div class="form-row" style="margin-top:12px;">
@@ -172,6 +174,37 @@
             </table>
           </div>
           <p style="font-size:12px;color:var(--gray-400);margin-top:8px;">※プレビュー表示は先頭50件。全件はCSVに含まれます。</p>
+        </div>
+
+        <div class="card hidden" id="lb-ai-card">
+          <div class="card-title">⑤ HP・電話番号をAIで補完（任意・従量課金）</div>
+          <p style="font-size:13px;color:var(--gray-500);line-height:1.7;margin-bottom:12px;">
+            電話番号が無い会社を、<strong>Claude Haiku 4.5＋Web検索ツール</strong>で1社ずつ調べて
+            公式サイトURL・電話番号を補完します。あなたのAPIキーで<strong>ブラウザから直接Anthropicに接続</strong>します
+            （このページのサーバーには何も送られません。キーはこのブラウザのlocalStorageにだけ保存）。
+            目安コストは<strong>1社あたり約¥2〜4</strong>（Web検索$0.01＋トークン数円）。<br>
+            💡 完全無料〜数百円で済ませたい場合は、ローカル版の「自前データ＋無料エンリッチ」を使ってください。
+          </p>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Anthropic APIキー（<a href="https://platform.claude.com/" target="_blank" rel="noopener">platform.claude.com</a> で発行）</label>
+              <input type="password" id="lb-ai-key" placeholder="sk-ant-api03-...">
+            </div>
+            <div class="form-group">
+              <label>補完する件数（電話番号が無い会社の先頭から）</label>
+              <select id="lb-ai-limit">
+                <option value="10">10件だけ試す（目安 ¥30前後）</option>
+                <option value="50">50件（目安 ¥150前後）</option>
+                <option value="100">100件（目安 ¥300前後）</option>
+                <option value="0">電話番号が無い全件</option>
+              </select>
+            </div>
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-primary" id="lb-ai-run" onclick="LB.aiEnrich()">AIで補完を開始</button>
+            <button class="btn btn-secondary hidden" id="lb-ai-stop" onclick="LB.aiStop()">停止</button>
+          </div>
+          <div id="lb-ai-progress" class="hidden" style="margin-top:10px;font-size:13px;color:var(--gray-500);"></div>
         </div>
 
       </div>
@@ -322,6 +355,31 @@ function buildColmap(headerArr) {
   return map;
 }
 
+/* 国税庁 法人番号 全件CSV（ヘッダ無し・30列固定）対応。corp_importer.py と同じ列位置。 */
+function looksLikeNta(record) {
+  return record.length >= 24 && /^\d{13}$/.test((record[1] || "").trim());
+}
+
+function ntaRowToCompany(r) {
+  if (r.length < 24) return null;
+  if ((r[23] || "").trim() !== "1") return null;   // 最新履歴のみ
+  if ((r[29] || "").trim() === "1") return null;   // 検索対象除外
+  if ((r[18] || "").trim() !== "") return null;    // 登記閉鎖済み
+  var pref = (r[9] || "").trim();
+  var name = (r[6] || "").trim();
+  if (!name) return null;
+  var digits = (r[15] || "").replace(/\D/g, "");
+  return {
+    corporate_number: (r[1] || "").trim(),
+    name: name,
+    location: pref + (r[10] || "").trim() + (r[11] || "").trim(),
+    postal_code: digits.length === 7 ? digits.slice(0, 3) + "-" + digits.slice(3) : (r[15] || "").trim(),
+    prefecture: pref,
+    capital_stock: null, employee_number: null, industry: "", founding_year: null,
+    representative_name: "", company_url: "", phone_number: "", match_reason: ""
+  };
+}
+
 function rowToCompany(record, colmap) {
   function g(field) {
     var idx = colmap[field];
@@ -402,23 +460,35 @@ function rankAndTrim(companies, criteria) {
 // --- CSV ストリーミングパーサ（引用符・改行入りフィールド対応） ---
 function makeSearcher(criteria, opts) {
   var field = "", record = [], inQuotes = false, pendingClose = false;
-  var header = null, colmap = null;
+  var header = null, colmap = null, ntaMode = false, effOpts = opts, dataHasCapital = true;
   var results = [];
   var scanned = 0, stop = false;
 
   function pushField() { record.push(field); field = ""; }
+  function processRecord(rec) {
+    scanned++;
+    var comp = ntaMode ? ntaRowToCompany(rec) : rowToCompany(rec, colmap);
+    if (comp && comp.name && matchesCriteria(comp, criteria, effOpts)) {
+      results.push(comp);
+      if (results.length >= opts.cap) stop = true;
+    }
+  }
   function endRecord() {
     pushField();
     if (header === null) {
       header = record;
       colmap = buildColmap(header);
-    } else if (!(record.length === 1 && record[0] === "")) {
-      scanned++;
-      var comp = rowToCompany(record, colmap);
-      if (comp.name && matchesCriteria(comp, criteria, opts)) {
-        results.push(comp);
-        if (results.length >= opts.cap) stop = true;
+      // ヘッダが認識できず、国税庁 全件CSV（ヘッダ無し30列）らしければ位置ベースで読む
+      if (colmap.name == null && looksLikeNta(record)) ntaMode = true;
+      // 資本金の列がそもそも無いデータでは「厳密に絞る」を適用しない
+      // （国税庁データ等は全社が資本金不明のため、適用すると必ず0件になる）
+      if (ntaMode || colmap.capital_stock == null) {
+        dataHasCapital = false;
+        effOpts = Object.assign({}, opts, { strictCapital: false });
       }
+      if (ntaMode) processRecord(record);  // 国税庁形式はヘッダが無いので1行目からデータ
+    } else if (!(record.length === 1 && record[0] === "")) {
+      processRecord(record);
     }
     record = [];
   }
@@ -451,14 +521,19 @@ function makeSearcher(criteria, opts) {
     isStop: function() { return stop; },
     getScanned: function() { return scanned; },
     getResults: function() { return results; },
-    hasHeaderMatch: function() { return colmap && (colmap.name != null); }
+    hasHeaderMatch: function() { return ntaMode || (colmap && (colmap.name != null)); },
+    hasCapitalColumn: function() { return dataHasCapital; }
   };
 }
 
 function scoreHeaderLine(line) {
   var cells = line.split(",");
   var map = buildColmap(cells);
-  return Object.keys(map).length;
+  var score = Object.keys(map).length * 10;
+  // ヘッダ無しCSV（国税庁 全件データ等）向け: 日本語が正しく読めているかで判定
+  if (/株式会社|有限会社|合同会社|東京都|北海道|大阪府|神奈川県/.test(line)) score += 5;
+  score -= (line.match(/�/g) || []).length;  // 文字化け（置換文字）ペナルティ
+  return score;
 }
 
 async function resolveEncoding(file, choice) {
@@ -500,7 +575,8 @@ async function searchFile(file, criteria, opts) {
     scanned: searcher.getScanned(),
     total: searcher.getResults().length,
     encoding: encoding,
-    headerMatched: searcher.hasHeaderMatch()
+    headerMatched: searcher.hasHeaderMatch(),
+    dataHasCapital: searcher.hasCapitalColumn()
   };
 }
 
@@ -547,9 +623,65 @@ function downloadText(filename, text, mime) {
   setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
 }
 
+/* --- AIエンリッチ（Claude Haiku 4.5 + Web検索ツール）---
+   ブラウザからAnthropic APIへ直接接続する（CORS対応の公式ヘッダを使用）。
+   APIキーはこのブラウザのlocalStorageにのみ保存され、このページのサーバーには送られない。 */
+async function aiLookupCompany(apiKey, comp) {
+  var body = {
+    model: "claude-haiku-4-5",
+    max_tokens: 500,
+    system: 'あなたは企業の公式サイトと電話番号を調べるアシスタントです。' +
+      'Web検索を使って、指定された会社の公式サイトURLと代表電話番号（日本の固定電話/フリーダイヤル）を特定してください。' +
+      '電話帳・ポータル・求人サイトではなく公式サイトを優先すること。' +
+      '回答の最後に必ず {"company_url": "...", "phone_number": "..."} というJSONだけの行を出力してください' +
+      '（確信が持てない項目は空文字にする）。',
+    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 2 }],
+    messages: [{
+      role: "user",
+      content: "会社名: " + comp.name + "\n所在地: " + (comp.location || comp.prefecture || "不明") +
+               "\nこの会社の公式サイトURLと代表電話番号を調べてください。"
+    }]
+  };
+  var res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    var msg = "";
+    try { msg = (await res.json()).error.message || ""; } catch (e) { /* ignore */ }
+    var err = new Error("API " + res.status + (msg ? ": " + msg : ""));
+    err.status = res.status;
+    throw err;
+  }
+  var data = await res.json();
+  var text = "";
+  var blocks = data.content || [];
+  for (var i = 0; i < blocks.length; i++) {
+    if (blocks[i].type === "text") text += blocks[i].text + "\n";
+  }
+  var matches = text.match(/\{[^{}]*\}/g) || [];
+  for (var j = matches.length - 1; j >= 0; j--) {
+    try {
+      var obj = JSON.parse(matches[j]);
+      if ("company_url" in obj || "phone_number" in obj) return obj;
+    } catch (e) { /* 次の候補へ */ }
+  }
+  return null;
+}
+
 var LB = {
   companies: [],
   _file: null,
+  _aiAbort: false,
+  _aiCalls: 0,
+  _lastCriteria: null,
+  _lastOut: null,
 
   fillSample: function() {
     document.getElementById('lb-inquiry').value =
@@ -659,7 +791,10 @@ var LB = {
   },
 
   renderResult: function(criteria, out) {
+    this._lastCriteria = criteria;
+    this._lastOut = out;
     document.getElementById('lb-result-card').classList.remove('hidden');
+    document.getElementById('lb-ai-card').classList.toggle('hidden', this.companies.length === 0);
     document.getElementById('lb-result-title').textContent = '作成結果：' + this.companies.length + ' 社（PC内検索）';
 
     var unknownEmp = this.companies.filter(function(c) { return c.employee_number == null; }).length;
@@ -669,6 +804,7 @@ var LB = {
       ['該当総数', out.total],
       ['従業員数不明', unknownEmp]
     ];
+    if (this._aiCalls > 0) statItems.push(['AI確認(有料)', this._aiCalls]);
     document.getElementById('lb-stats').innerHTML = statItems.map(function(pair) {
       return '<div class="stat-card"><div class="label">' + pair[0] + '</div><div class="value" style="font-size:20px">' + pair[1] + '</div></div>';
     }).join('');
@@ -676,9 +812,11 @@ var LB = {
     var note = document.getElementById('lb-note');
     var notes = [];
     if (this.companies.length === 0) notes.push('該当0件でした。社名キーワードや都道府県、文字コードの指定を見直してみてください。');
+    if (!out.dataHasCapital && (criteria.capital_max != null || criteria.capital_min != null))
+      notes.push('このCSVには資本金の列が無いため、資本金の条件は適用していません（国税庁データは社名・所在地のみ）。');
     if (unknownEmp > 0) notes.push('従業員数が不明な会社が含まれます（そのCSVに従業員数の列が無い/空の場合）。');
     var hasPhone = this.companies.some(function(c) { return c.phone_number; });
-    if (!hasPhone && this.companies.length > 0) notes.push('このCSVには電話番号が無いため、架電用CSVの電話番号欄は空です。');
+    if (!hasPhone && this.companies.length > 0) notes.push('このCSVには電話番号がありません。下の「⑤ HP・電話番号をAIで補完」で埋められます（ローカル版なら無料補完も可）。');
     if (notes.length) { note.textContent = 'ℹ ' + notes.join(' '); note.classList.remove('hidden'); }
     else note.classList.add('hidden');
 
@@ -697,12 +835,102 @@ var LB = {
     document.getElementById('lb-result-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   },
 
+  aiStop: function() { this._aiAbort = true; },
+
+  aiEnrich: async function() {
+    if (!this.companies.length) { toast('先にリストを作成してください', 'error'); return; }
+    var keyEl = document.getElementById('lb-ai-key');
+    var apiKey = keyEl.value.trim();
+    if (!apiKey) { toast('Anthropic APIキーを入力してください', 'error'); return; }
+    if (apiKey.indexOf('sk-ant-') !== 0) { toast('APIキーの形式が正しくないようです（sk-ant-で始まります）', 'error'); return; }
+    localStorage.setItem('telepy_anthropic_key', apiKey);
+
+    var limit = parseInt(document.getElementById('lb-ai-limit').value, 10);
+    var targets = this.companies.filter(function(c) { return !c.phone_number; });
+    if (limit > 0) targets = targets.slice(0, limit);
+    if (!targets.length) { toast('電話番号が無い会社がありません（補完は不要です）'); return; }
+
+    this._aiAbort = false;
+    var runBtn = document.getElementById('lb-ai-run');
+    var stopBtn = document.getElementById('lb-ai-stop');
+    var prog = document.getElementById('lb-ai-progress');
+    runBtn.disabled = true;
+    stopBtn.classList.remove('hidden');
+    prog.classList.remove('hidden');
+
+    var self = this;
+    var done = 0, got = 0, failed = 0;
+    function update() {
+      prog.textContent = '🤖 AI補完中... ' + done + ' / ' + targets.length + ' 社（電話取得 ' + got +
+        ' 件・失敗 ' + failed + ' 件）— このタブを閉じないでください';
+    }
+    update();
+
+    async function lookupWithRetry(comp) {
+      try {
+        return await aiLookupCompany(apiKey, comp);
+      } catch (e) {
+        if (e.status === 429 && !self._aiAbort) {
+          // レート制限: 15秒待って1回だけ再試行
+          await new Promise(function(r) { setTimeout(r, 15000); });
+          return await aiLookupCompany(apiKey, comp);
+        }
+        throw e;
+      }
+    }
+
+    // 同時2並列（レート制限に配慮）
+    var idx = 0;
+    async function worker() {
+      while (!self._aiAbort) {
+        var i = idx++;
+        if (i >= targets.length) break;
+        var comp = targets[i];
+        try {
+          var r = await lookupWithRetry(comp);
+          self._aiCalls++;  // 成功した（=課金された）呼び出しだけ数える
+          if (r) {
+            if (!comp.company_url && r.company_url) comp.company_url = String(r.company_url).trim();
+            if (!comp.phone_number && r.phone_number) comp.phone_number = String(r.phone_number).trim();
+            if (comp.phone_number) { got++; comp.match_reason = 'AIで補完（Web検索）'; }
+          }
+        } catch (e) {
+          failed++;
+          if (e.status === 401) { self._aiAbort = true; toast('APIキーが無効です: ' + e.message, 'error'); }
+        }
+        done++;
+        update();
+      }
+    }
+    await Promise.all([worker(), worker()]);
+
+    runBtn.disabled = false;
+    stopBtn.classList.add('hidden');
+    prog.textContent = (this._aiAbort ? '⏸ 停止しました。' : '✅ 完了。') +
+      ' ' + done + '社を処理し、電話番号 ' + got + ' 件を取得しました' +
+      '（AI呼び出し累計 ' + this._aiCalls + ' 回 ≒ 概算 ¥' + Math.round(this._aiCalls * 3).toLocaleString() + '）';
+    this.refreshTable();
+    if (!this._aiAbort) toast('AI補完が完了しました（電話 ' + got + ' 件取得）');
+  },
+
+  refreshTable: function() {
+    if (this._lastOut) this.renderResult(this._lastCriteria, this._lastOut);
+  },
+
   download: function(fmt) {
     if (!this.companies.length) { toast('先にリストを作成してください', 'error'); return; }
     if (fmt === 'call') downloadText('call_list.csv', toCallCsv(this.companies), 'text/csv');
     else downloadText('company_list.csv', toDetailCsv(this.companies), 'text/csv');
   }
 };
+
+// 保存済みAPIキーを復元（このブラウザのlocalStorageのみ）
+(function() {
+  try {
+    var saved = localStorage.getItem('telepy_anthropic_key');
+    if (saved) document.getElementById('lb-ai-key').value = saved;
+  } catch (e) { /* プライベートモード等 */ }
+})();
 </script>
 </body>
 </html>
