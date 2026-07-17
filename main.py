@@ -51,10 +51,29 @@ active_sessions: dict = {}
 DEFAULT_SCRIPT = SCRIPTS_DIR / "example_client.yaml"
 
 
+async def _nta_auto_update_loop():
+    """国税庁 全件データを起動時＋1日1回チェックし、新しければ自動で差し替える。"""
+    from nta_updater import auto_update_enabled, check_and_update
+    await asyncio.sleep(5)  # 起動直後のサーバー立ち上がりを待つ
+    while True:
+        if auto_update_enabled():
+            try:
+                result = await check_and_update()
+                if result["updated"]:
+                    logger.info("国税庁データを更新しました: %s", result["updated"])
+                if result["errors"]:
+                    logger.warning("国税庁データ更新の一部が失敗: %s", result["errors"])
+            except Exception as e:
+                logger.warning("国税庁データの自動更新をスキップ（次回再試行）: %s", e)
+        await asyncio.sleep(24 * 3600)  # 1日1回チェック（全件データは月次更新）
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("telepy サーバー起動")
+    nta_task = asyncio.create_task(_nta_auto_update_loop())
     yield
+    nta_task.cancel()
     try:
         _, _, _, _, cleanup_audio_files, _, _, _ = _import_call_modules()
         cleanup_audio_files()
@@ -442,6 +461,57 @@ async def api_list_local_status():
         "configured": len(files) > 0,
         "data_dir": str(src.data_dir),
         "files": [{"name": p.name, "size": p.stat().st_size} for p in files],
+    }
+
+
+@app.get("/api/list/nta-status")
+async def api_nta_status():
+    """国税庁 全件データ（母集団）の取得状況と自動更新設定を返す"""
+    from nta_updater import status
+    return status()
+
+
+@app.post("/api/list/nta-update")
+async def api_nta_update():
+    """国税庁 全件データの更新チェックを今すぐ実行する（非同期ジョブ）"""
+    import uuid
+    job_id = uuid.uuid4().hex[:12]
+    list_jobs[job_id] = {
+        "id": job_id, "status": "queued", "progress": {},
+        "companies": [], "stats": {}, "count": 0, "type": "nta",
+    }
+
+    async def run():
+        from nta_updater import check_and_update
+        job = list_jobs[job_id]
+        job["status"] = "running"
+
+        async def on_progress(p: dict):
+            job["progress"] = p
+
+        try:
+            result = await check_and_update(progress=on_progress)
+            job["status"] = "done"
+            job["result"] = result
+            job["progress"] = {"phase": "done", "detail": "更新チェック完了"}
+        except Exception as e:
+            logger.exception("国税庁データ更新ジョブ失敗")
+            job["status"] = "error"
+            job["error"] = str(e)
+
+    asyncio.create_task(run())
+    return {"job_id": job_id, "status": "queued"}
+
+
+@app.get("/api/list/nta-update/{job_id}")
+async def api_nta_update_status(job_id: str):
+    job = list_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+    return {
+        "id": job["id"], "status": job["status"],
+        "progress": job.get("progress", {}),
+        "result": job.get("result"), "error": job.get("error"),
     }
 
 

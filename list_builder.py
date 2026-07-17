@@ -532,10 +532,9 @@ class LocalDataSource:
         keywords = criteria.name_keywords
         prefs = set(criteria.prefectures)
         for path in self.available_files():
-            for row in self._iter_rows(path):
+            for comp in self._iter_companies(path):
                 scanned += 1
-                comp = self._row_to_company(row)
-                if not comp.name:
+                if comp is None or not comp.name:
                     continue
                 if keywords and not any(kw and kw in comp.name for kw in keywords):
                     continue
@@ -554,16 +553,31 @@ class LocalDataSource:
                     progress(scanned, len(results))
         return results, scanned
 
-    def _iter_rows(self, path: Path):
+    def _iter_companies(self, path: Path):
+        """CSVを1行ずつCompanyにして返す（対象外の行はNone）。
+
+        ヘッダ付きCSV（gBizINFO一括・telepy形式・手持ちCSV）に加え、
+        国税庁 法人番号 全件CSV（ヘッダ無し30列）もそのまま読める。
+        """
+        # 循環import回避のため遅延import（corp_importer側がlist_builderに依存）
+        from corp_importer import looks_like_nta_row, nta_row_to_fields
+
         f = _open_text_auto(path)
         try:
-            reader = csv.DictReader(f)
-            if not reader.fieldnames:
+            reader = csv.reader(f)
+            first = next(reader, None)
+            if first is None:
                 return
-            colmap = self._build_colmap(reader.fieldnames)
-            self._active_colmap = colmap
-            for row in reader:
-                yield row
+            if looks_like_nta_row(first):
+                # 国税庁 全件CSV: ヘッダが無いので1行目からデータ
+                for row in _chain_first(first, reader):
+                    fields = nta_row_to_fields(row)
+                    yield Company(**fields, match_reason="") if fields else None
+            else:
+                colmap = self._build_colmap(first)
+                self._active_colmap = colmap
+                for row in reader:
+                    yield self._row_to_company(dict(zip(first, row)))
         finally:
             f.close()
 
@@ -603,6 +617,12 @@ class LocalDataSource:
             company_url=get("company_url"),
             phone_number=get("phone_number"),
         )
+
+
+def _chain_first(first, rest):
+    yield first
+    for row in rest:
+        yield row
 
 
 def _open_text_auto(path: Path):

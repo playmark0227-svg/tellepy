@@ -288,6 +288,69 @@ const ListBuilder = {
         el.style.color = 'var(--gray-400)';
       }
     } catch (e) { /* ignore */ }
+    this.loadNtaStatus();
+  },
+
+  async loadNtaStatus() {
+    // 国税庁 全件データ（母集団）の自動更新状況を表示
+    const el = document.getElementById('lb-nta-status');
+    if (!el) return;
+    try {
+      const st = await api('GET', '/list/nta-status');
+      const ready = st.items.filter(i => i.file_exists);
+      let text;
+      if (ready.length) {
+        const date = ready[0].date || '';
+        const dateLbl = date ? `${date.slice(0, 4)}/${date.slice(4, 6)}/${date.slice(6, 8)}版` : '';
+        const rows = ready.reduce((a, i) => a + (i.rows || 0), 0);
+        text = `🗾 国税庁データ: ${ready.map(i => i.prefecture).join('・')}（${dateLbl} / 計${rows.toLocaleString()}社）`;
+        el.style.color = 'var(--success)';
+      } else {
+        text = `🗾 国税庁データ: 未取得（${st.prefectures.join('・')}を自動取得します）`;
+        el.style.color = 'var(--gray-400)';
+      }
+      text += st.auto_update ? ' / 自動更新ON（毎日チェック・月次データを自動反映）' : ' / 自動更新OFF';
+      el.textContent = text;
+    } catch (e) { /* ignore */ }
+  },
+
+  async ntaUpdate() {
+    const btn = document.getElementById('lb-nta-update-btn');
+    const el = document.getElementById('lb-nta-status');
+    btn.disabled = true;
+    try {
+      const res = await api('POST', '/list/nta-update');
+      const tick = async () => {
+        try {
+          const job = await api('GET', '/list/nta-update/' + res.job_id);
+          if (job.status === 'done') {
+            const r = job.result || {};
+            const up = (r.updated || []).length, sk = (r.skipped || []).length, er = (r.errors || []).length;
+            toast(up ? `国税庁データを更新しました（${up}県）` : er ? '一部の県で更新に失敗しました' : '既に最新でした');
+            btn.disabled = false;
+            this.loadNtaStatus();
+            return;
+          }
+          if (job.status === 'error') {
+            toast('更新に失敗: ' + (job.error || '不明なエラー'), 'error');
+            btn.disabled = false;
+            this.loadNtaStatus();
+            return;
+          }
+          if (el && job.progress && job.progress.detail) {
+            el.textContent = '🗾 ' + job.progress.detail;
+            el.style.color = 'var(--gray-400)';
+          }
+          setTimeout(tick, 1500);
+        } catch (e) {
+          setTimeout(tick, 3000);
+        }
+      };
+      tick();
+    } catch (e) {
+      toast('更新の開始に失敗: ' + e.message, 'error');
+      btn.disabled = false;
+    }
   },
 
   fillSample() {

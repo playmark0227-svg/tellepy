@@ -177,6 +177,43 @@ def _write_csv(dirpath, name, content, encoding="utf-8"):
     return path
 
 
+def test_local_nta_raw_csv():
+    """国税庁 全件CSV（ヘッダ無し30列）を data/ に置くだけで検索できる"""
+    def nta_row(cn, name, pref, city, street, latest="1", hihyoji="0", close=""):
+        row = [""] * 30
+        row[1] = cn; row[6] = name; row[8] = "301"
+        row[9] = pref; row[10] = city; row[11] = street
+        row[15] = "1550031"; row[18] = close; row[23] = latest; row[29] = hihyoji
+        return ",".join(row)
+
+    raw = "\n".join([
+        nta_row("1010001000001", "株式会社まごころ工務店", "東京都", "世田谷区", "北沢2-1"),
+        nta_row("1010001000002", "旧履歴工務店", "東京都", "新宿区", "1-1", latest="0"),
+        nta_row("1010001000003", "閉鎖工務店", "東京都", "港区", "2-2", close="2020-01-01"),
+        nta_row("1010001000004", "除外工務店", "東京都", "北区", "3-3", hihyoji="1"),
+        nta_row("2020002000005", "ハマノ不動産株式会社", "神奈川県", "横浜市", "港北1-2"),
+        nta_row("2720002000006", "大阪工務店", "大阪府", "大阪市", "北区1-1"),
+    ]) + "\n"
+
+    with tempfile.TemporaryDirectory() as d:
+        _write_csv(d, "nta_13.csv", raw)
+        src = LocalDataSource(data_dir=d)
+        criteria = SearchCriteria(
+            name_keywords=["工務店", "不動産"],
+            prefectures=["東京都", "神奈川県"],
+            target_count=100,
+        )
+        cand, scanned = src.search(criteria)
+        names = sorted(c.name for c in cand)
+        assert names == ["ハマノ不動産株式会社", "株式会社まごころ工務店"], names
+        assert scanned == 6, scanned
+        comp = [c for c in cand if "まごころ" in c.name][0]
+        assert comp.prefecture == "東京都"
+        assert comp.postal_code == "155-0031", comp.postal_code
+        assert comp.corporate_number == "1010001000001"
+    print("✓ 国税庁 全件CSV（ヘッダ無し）を直接ローカル検索（履歴・閉鎖・除外をフィルタ）")
+
+
 def test_local_search_and_build():
     with tempfile.TemporaryDirectory() as d:
         _write_csv(d, "companies.csv", SAMPLE_CSV)
@@ -381,6 +418,7 @@ if __name__ == "__main__":
         test_target_count_guard,
         test_local_search_and_build,
         test_local_column_autodetect_and_encoding,
+        test_local_nta_raw_csv,
         test_resolve_mode,
         test_api_bot_reaches_target,
         test_api_bot_continues_until_exhausted,

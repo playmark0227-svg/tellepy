@@ -46,6 +46,45 @@ NTA_MIN_COLS = 24       # これ未満の行は不正としてスキップ
 OUT_COLUMNS = ["法人番号", "法人名", "所在地", "郵便番号"]
 
 
+def looks_like_nta_row(row: list) -> bool:
+    """国税庁 全件CSV（ヘッダ無し30列）の行っぽいか（先頭行の形式判定用）。"""
+    if len(row) < NTA_MIN_COLS:
+        return False
+    cn = (row[COL_CORPORATE_NUMBER] or "").strip()
+    return len(cn) == 13 and cn.isdigit()
+
+
+def nta_row_to_fields(
+    row: list,
+    *,
+    include_closed: bool = False,
+    latest_only: bool = True,
+) -> Optional[dict]:
+    """国税庁CSVの1行を会社フィールドの辞書に変換する。対象外の行はNone。
+
+    ローカル検索（list_builder.LocalDataSource）が生の全件CSVを直接読むときにも使う。
+    """
+    if len(row) < NTA_MIN_COLS:
+        return None
+    if latest_only and row[COL_LATEST].strip() != "1":
+        return None
+    if row[COL_HIHYOJI].strip() == "1":
+        return None  # 検索対象除外
+    if not include_closed and row[COL_CLOSE_DATE].strip():
+        return None  # 登記閉鎖済み
+    name = row[COL_NAME].strip()
+    if not name:
+        return None
+    pref = row[COL_PREFECTURE].strip()
+    return {
+        "corporate_number": row[COL_CORPORATE_NUMBER].strip(),
+        "name": name,
+        "prefecture": pref,
+        "location": pref + row[COL_CITY].strip() + row[COL_STREET].strip(),
+        "postal_code": _format_postal(row[COL_POSTCODE]),
+    }
+
+
 def _iter_source_files(src: Path) -> Iterator[Path]:
     """入力（csv / zip / ディレクトリ）から実CSVパスを列挙する。
     zip はメモリ上で展開せず、呼び出し側が open できるよう一時展開する。"""
@@ -88,26 +127,16 @@ def iter_companies(
         try:
             reader = csv.reader(f)
             for row in reader:
-                if len(row) < NTA_MIN_COLS:
+                fields = nta_row_to_fields(row, include_closed=include_closed, latest_only=latest_only)
+                if fields is None:
                     continue
-                if latest_only and row[COL_LATEST].strip() != "1":
+                if pref_set is not None and fields["prefecture"] not in pref_set:
                     continue
-                if row[COL_HIHYOJI].strip() == "1":
-                    continue  # 検索対象除外
-                if not include_closed and row[COL_CLOSE_DATE].strip():
-                    continue  # 登記閉鎖済み
-                pref = row[COL_PREFECTURE].strip()
-                if pref_set is not None and pref not in pref_set:
-                    continue
-                name = row[COL_NAME].strip()
-                if not name:
-                    continue
-                location = pref + row[COL_CITY].strip() + row[COL_STREET].strip()
                 yield {
-                    "法人番号": row[COL_CORPORATE_NUMBER].strip(),
-                    "法人名": name,
-                    "所在地": location,
-                    "郵便番号": _format_postal(row[COL_POSTCODE]),
+                    "法人番号": fields["corporate_number"],
+                    "法人名": fields["name"],
+                    "所在地": fields["location"],
+                    "郵便番号": fields["postal_code"],
                 }
         finally:
             f.close()

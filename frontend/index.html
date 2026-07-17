@@ -287,9 +287,11 @@
             </select>
             <div style="margin-top:8px;">
               <button type="button" class="btn btn-sm btn-secondary" onclick="ListBuilder.testConnection()">gBizINFO 接続テスト</button>
+              <button type="button" class="btn btn-sm btn-secondary" id="lb-nta-update-btn" onclick="ListBuilder.ntaUpdate()">国税庁データを今すぐ更新</button>
               <span id="lb-conn-status" style="margin-left:8px;font-size:12px;"></span>
             </div>
-            <span class="hint" id="lb-local-status" style="display:block;margin-top:6px;color:var(--gray-400);font-size:12px;"></span>
+            <span class="hint" id="lb-nta-status" style="display:block;margin-top:6px;color:var(--gray-400);font-size:12px;"></span>
+            <span class="hint" id="lb-local-status" style="display:block;margin-top:4px;color:var(--gray-400);font-size:12px;"></span>
           </div>
 
           <div class="card" style="background:var(--gray-50, #f9fafb);box-shadow:none;border:1px solid var(--gray-200);margin-bottom:16px;">

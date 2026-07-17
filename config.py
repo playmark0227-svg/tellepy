@@ -22,6 +22,8 @@ ENV_MAP = {
     "forward_phone_number": "FORWARD_PHONE_NUMBER",
     "gbizinfo_api_token": "GBIZINFO_API_TOKEN",
     "search_api_key": "SEARCH_API_KEY",
+    "nta_prefectures": "NTA_PREFECTURES",
+    "nta_auto_update": "NTA_AUTO_UPDATE",
 }
 
 DEFAULT_CONFIG = {k: "" for k in ENV_MAP}
