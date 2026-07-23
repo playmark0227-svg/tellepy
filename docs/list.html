@@ -3,214 +3,581 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>telepy - リスト作成</title>
-  <link rel="stylesheet" href="css/style.css">
+  <meta name="theme-color" content="#F3F5F9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0E1420" media="(prefers-color-scheme: dark)">
+  <title>telepy リスト作成 — 架電リストを、この端末だけで</title>
+  <script>
+    /* テーマ初期化（描画前に確定させてチラつきを防ぐ） */
+    (function () {
+      try {
+        var t = localStorage.getItem('telepy_theme');
+        if (t !== 'light' && t !== 'dark') {
+          t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    })();
+  </script>
+  <style>
+    :root {
+      --font: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", "Yu Gothic", Meiryo, sans-serif;
+      --bg: #F3F5F9; --surface: #FFFFFF; --surface2: #EDF0F6;
+      --primary: #2D54D8; --primary-hover: #2143BE; --on-primary: #FFFFFF;
+      --accent: #0E9A8C; --accent-strong: #0B7C71;
+      --text: #182031; --muted: #586274; --border: #E0E5EE;
+      --success: #12855A; --warning: #B5730B; --danger: #C63636;
+      --primary-soft: color-mix(in srgb, var(--primary) 8%, var(--surface));
+      --accent-soft: color-mix(in srgb, var(--accent) 12%, var(--surface));
+      --warn-soft: color-mix(in srgb, var(--warning) 14%, var(--surface));
+      --ring: 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent);
+      --sh-sm: 0 1px 2px rgba(20,28,48,.06);
+      --sh-md: 0 4px 16px -4px rgba(20,28,48,.10);
+      --sh-lg: 0 12px 40px -12px rgba(20,28,48,.18);
+      --card-inset: none;
+      --r-sm: 8px; --r-md: 12px; --r-lg: 18px;
+      --ease: cubic-bezier(.22,.61,.36,1);
+      --ease-quick: cubic-bezier(.4,0,.2,1);
+      color-scheme: light;
+    }
+    :root[data-theme="dark"] {
+      --bg: #0E1420; --surface: #161E2C; --surface2: #1E2839;
+      --primary: #5B82F0; --primary-hover: #7597F4; --on-primary: #0E1420;
+      --accent: #3BC7B8; --accent-strong: #7FE0D5;
+      --text: #E7EBF3; --muted: #9BA7BD; --border: #2A3448;
+      --success: #34C77B; --warning: #E0A340; --danger: #F0655C;
+      --primary-soft: color-mix(in srgb, var(--primary) 16%, var(--surface));
+      --accent-soft: color-mix(in srgb, var(--accent) 16%, var(--surface));
+      --warn-soft: color-mix(in srgb, var(--warning) 18%, var(--surface));
+      --sh-sm: 0 1px 2px rgba(0,0,0,.4);
+      --sh-md: 0 6px 20px -6px rgba(0,0,0,.5);
+      --sh-lg: 0 16px 48px -14px rgba(0,0,0,.6);
+      --card-inset: inset 0 1px 0 rgba(255,255,255,.04);
+      color-scheme: dark;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.7;
+      font-feature-settings: "palt" 1; letter-spacing: .01em; -webkit-font-smoothing: antialiased;
+      min-height: 100vh; transition: background .22s var(--ease), color .22s var(--ease);
+    }
+    a { color: var(--primary); text-underline-offset: 2px; }
+    .hidden { display: none !important; }
+    ::selection { background: color-mix(in srgb, var(--primary) 24%, transparent); }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; border: 2px solid var(--bg); }
+
+    /* ---------- Shell & header ---------- */
+    .shell { max-width: 1080px; margin: 0 auto; padding: 20px 20px 96px; }
+    .app-header {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 10px 2px 18px; position: sticky; top: 0; z-index: 30; background: var(--bg);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .brand-mark {
+      width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0; display: grid; place-items: center;
+      background: linear-gradient(135deg, var(--primary), var(--accent)); color: #fff; box-shadow: var(--sh-sm);
+    }
+    .brand-mark svg { width: 24px; height: 24px; }
+    .brand-name { font-size: 18px; font-weight: 700; letter-spacing: .01em; }
+    .brand-name span { color: var(--muted); font-weight: 600; font-size: 14px; margin-left: 3px; }
+    .brand-sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
+    .header-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    .trust-chip {
+      display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
+      color: var(--accent-strong); background: var(--accent-soft);
+      border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+      padding: 6px 12px; border-radius: 999px; white-space: nowrap;
+    }
+    .theme-toggle {
+      width: 40px; height: 40px; border-radius: 999px; border: 1px solid var(--border);
+      background: var(--surface); color: var(--muted); display: grid; place-items: center;
+      cursor: pointer; transition: color .12s var(--ease-quick), border-color .12s var(--ease-quick);
+    }
+    .theme-toggle:hover { color: var(--text); border-color: var(--primary); }
+    .theme-toggle:focus-visible { outline: none; box-shadow: var(--ring); }
+    .theme-toggle svg { width: 18px; height: 18px; }
+    .theme-toggle .i-sun { display: none; }
+    :root[data-theme="dark"] .theme-toggle .i-moon { display: none; }
+    :root[data-theme="dark"] .theme-toggle .i-sun { display: block; }
+
+    /* ---------- Layout ---------- */
+    .layout { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 36px; align-items: start; }
+    .rail { position: sticky; top: 82px; }
+    .studio { max-width: 760px; min-width: 0; }
+
+    /* ---------- Stepper ---------- */
+    .stepper { position: relative; list-style: none; display: flex; flex-direction: column; gap: 22px; padding: 6px 0 6px 6px; }
+    .stepper-track, .stepper-fill { position: absolute; left: 20px; top: 15px; width: 2px; border-radius: 2px; }
+    .stepper-track { bottom: 15px; background: var(--border); }
+    .stepper-fill { height: calc(var(--step-progress, 0) * 100%); background: linear-gradient(var(--accent), var(--primary)); transition: height .4s var(--ease); }
+    .step-node { position: relative; z-index: 1; }
+    .step-node button { display: flex; align-items: center; gap: 12px; background: none; border: 0; cursor: pointer; font-family: inherit; color: var(--muted); padding: 0; width: 100%; text-align: left; }
+    .step-node button:focus-visible { outline: none; }
+    .step-node button:focus-visible .node-badge { box-shadow: var(--ring); }
+    .node-badge {
+      position: relative; width: 30px; height: 30px; border-radius: 999px; flex-shrink: 0;
+      display: grid; place-items: center; font-size: 13px; font-weight: 700;
+      background: var(--surface); border: 2px solid var(--border); color: var(--muted);
+      transition: background .22s var(--ease), border-color .22s var(--ease), color .22s var(--ease);
+    }
+    .node-num { transition: opacity .2s; }
+    .node-check { position: absolute; width: 16px; height: 16px; opacity: 0; transition: opacity .2s; }
+    .node-check path { fill: none; stroke: #fff; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 20; stroke-dashoffset: 20; transition: stroke-dashoffset .3s var(--ease) .05s; }
+    .node-label { font-size: 13px; font-weight: 600; letter-spacing: .02em; transition: color .2s; }
+    .step-node.is-active .node-badge { border-color: var(--primary); color: var(--primary); }
+    .step-node.is-active .node-label { color: var(--text); }
+    .step-node.is-done .node-badge { background: var(--accent); border-color: var(--accent); }
+    .step-node.is-done .node-num { opacity: 0; }
+    .step-node.is-done .node-check { opacity: 1; }
+    .step-node.is-done .node-check path { stroke-dashoffset: 0; }
+    .step-node.is-done .node-label { color: var(--text); }
+    .step-node.is-upcoming { opacity: .55; }
+    .rail-trust { font-size: 11px; color: var(--muted); margin-top: 22px; padding-left: 4px; line-height: 1.7; max-width: 190px; }
+    @media (prefers-reduced-motion: no-preference) {
+      .step-node.is-active .node-badge { animation: nodePulse 2.4s ease-in-out infinite; }
+      @keyframes nodePulse {
+        0%, 100% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 14%, transparent); }
+        50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--primary) 5%, transparent); }
+      }
+    }
+
+    /* ---------- Cards ---------- */
+    .step-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+      box-shadow: var(--sh-md), var(--card-inset); padding: 24px; margin-bottom: 20px;
+    }
+    @media (max-width: 520px) { .step-card { padding: 20px; } }
+    .card-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 18px; }
+    .head-num { width: 30px; height: 30px; border-radius: 999px; flex-shrink: 0; display: grid; place-items: center; font-size: 13px; font-weight: 700; background: var(--primary-soft); color: var(--primary); }
+    .head-text { min-width: 0; flex: 1; }
+    .eyebrow { display: block; font-size: 11px; font-weight: 700; letter-spacing: .14em; color: var(--accent-strong); margin-bottom: 3px; }
+    .card-title { font-size: 18px; font-weight: 700; line-height: 1.5; }
+    .card-desc { font-size: 13px; color: var(--muted); margin-top: 6px; line-height: 1.8; }
+    .head-extra { margin-left: auto; padding-top: 2px; }
+
+    /* ---------- Forms ---------- */
+    .field { margin-bottom: 16px; }
+    .field:last-child { margin-bottom: 0; }
+    .field-label { display: block; font-size: 13px; font-weight: 600; letter-spacing: .03em; color: var(--muted); margin-bottom: 7px; }
+    .field-help { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.7; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 520px) { .grid2 { grid-template-columns: 1fr; gap: 14px; } }
+    input[type=text], input[type=number], input[type=password], textarea, select {
+      width: 100%; font-family: inherit; font-size: 15px; color: var(--text); background: var(--surface2);
+      border: 1px solid var(--border); border-radius: var(--r-sm); padding: 11px 13px;
+      transition: border-color .16s var(--ease), box-shadow .16s var(--ease), background .2s;
+    }
+    @media (max-width: 480px) { input[type=text], input[type=number], input[type=password], textarea, select { font-size: 16px; } }
+    textarea { min-height: 140px; line-height: 1.9; resize: vertical; }
+    input::placeholder, textarea::placeholder { color: var(--muted); opacity: .85; }
+    input:focus, textarea:focus, select:focus { outline: none; border-color: var(--primary); box-shadow: var(--ring); }
+    select {
+      appearance: none; -webkit-appearance: none; cursor: pointer; padding-right: 38px;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238892a8' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+      background-repeat: no-repeat; background-position: right 12px center; background-size: 16px;
+    }
+    .range { display: flex; align-items: center; gap: 10px; }
+    .range .dash { color: var(--muted); font-weight: 600; }
+
+    /* Switches */
+    .switches { display: flex; flex-direction: column; gap: 12px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+    .switch { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+    .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+    .switch-track { position: relative; width: 42px; height: 24px; border-radius: 999px; background: var(--surface2); border: 1px solid var(--border); flex-shrink: 0; transition: background .18s var(--ease), border-color .18s var(--ease); }
+    .switch-track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 999px; background: #fff; box-shadow: var(--sh-sm); transition: transform .18s var(--ease); }
+    .switch input:checked + .switch-track { background: var(--accent); border-color: var(--accent); }
+    .switch input:checked + .switch-track::after { transform: translateX(18px); }
+    .switch input:focus-visible + .switch-track { box-shadow: var(--ring); }
+    .switch-text { font-size: 13.5px; line-height: 1.6; }
+
+    /* ---------- Buttons ---------- */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-family: inherit;
+      font-size: 15px; font-weight: 600; line-height: 1; border: 1px solid transparent; border-radius: var(--r-md);
+      padding: 0 18px; height: 44px; cursor: pointer;
+      transition: transform .12s var(--ease-quick), background .12s, box-shadow .12s, border-color .12s, color .12s;
+      white-space: nowrap;
+    }
+    .btn svg { width: 17px; height: 17px; }
+    .btn:focus-visible { outline: none; box-shadow: var(--ring); }
+    .btn:hover { transform: translateY(-1px); }
+    .btn:active { transform: translateY(0) scale(.985); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
+    .btn-primary { background: var(--primary); color: var(--on-primary); box-shadow: var(--sh-sm); }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-ghost { background: transparent; color: var(--text); border-color: var(--border); }
+    .btn-ghost:hover { background: var(--surface2); }
+    .btn-success { background: linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--accent) 60%, var(--primary))); color: #fff; box-shadow: var(--sh-md); }
+    .btn-danger-ghost { background: transparent; color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+    .btn-danger-ghost:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+    .btn-sm { height: 36px; font-size: 13.5px; padding: 0 14px; border-radius: var(--r-sm); }
+    .btn-block { display: flex; width: 100%; }
+    .btn-cta { height: 52px; font-size: 16px; font-weight: 700; margin-top: 4px; }
+    .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+
+    /* ---------- Dropzone ---------- */
+    .dropzone { border: 2px dashed var(--border); border-radius: var(--r-md); background: var(--surface2); padding: 28px 20px; text-align: center; cursor: pointer; transition: border-color .16s var(--ease), background .16s var(--ease), transform .16s var(--ease); }
+    .dropzone:hover { border-color: color-mix(in srgb, var(--primary) 55%, var(--border)); }
+    .dropzone.dragover { border-style: solid; border-color: var(--primary); background: color-mix(in srgb, var(--primary) 6%, var(--surface2)); transform: scale(1.006); }
+    .dropzone.has-files { border-style: solid; border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--surface2)); }
+    .dz-icon { width: 52px; height: 52px; margin: 0 auto 8px; color: var(--muted); transition: transform .16s var(--ease), color .16s var(--ease); }
+    .dropzone.dragover .dz-icon { transform: translateY(-3px); color: var(--primary); }
+    .dropzone.has-files .dz-icon { color: var(--accent); }
+    .dz-main { font-size: 14.5px; font-weight: 600; color: var(--text); }
+    .dz-sub { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.8; }
+
+    /* ---------- Progress ---------- */
+    .progress-track { height: 8px; border-radius: 999px; background: var(--surface2); overflow: hidden; position: relative; margin-bottom: 14px; }
+    .progress-track::after { content: ""; position: absolute; top: 0; left: -40%; width: 40%; height: 100%; border-radius: 999px; background: linear-gradient(90deg, transparent, var(--accent), var(--primary), transparent); animation: sheen 1.4s linear infinite; }
+    @keyframes sheen { to { left: 100%; } }
+    .progress-text { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+    /* ---------- Result ---------- */
+    .result-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+    .result-head .card-title { font-size: 18px; }
+    .result-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    #lb-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .stat-card { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 15px 16px 13px; }
+    .stat-card:first-child { background: var(--primary-soft); border-color: color-mix(in srgb, var(--primary) 22%, transparent); }
+    .stat-card .label { font-size: 12px; font-weight: 600; letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; }
+    .stat-card .value { font-size: 30px !important; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--text); }
+    .stat-card:first-child .value { color: var(--primary); }
+    .note { font-size: 12.5px; line-height: 1.8; color: var(--warning); background: var(--warn-soft); border: 1px solid color-mix(in srgb, var(--warning) 26%, transparent); padding: 11px 14px; border-radius: var(--r-md); margin-bottom: 14px; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--r-md); }
+    table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    thead th { position: sticky; top: 0; background: var(--surface2); text-align: left; font-size: 12.5px; font-weight: 600; color: var(--muted); padding: 11px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    tbody td { padding: 11px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    tbody tr:last-child td { border-bottom: 0; }
+    tbody tr:hover td { background: color-mix(in srgb, var(--primary) 5%, transparent); }
+    tbody td:nth-child(1) { font-weight: 600; max-width: 240px; }
+    tbody td:nth-child(4), tbody td:nth-child(5) { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    tbody td:nth-child(7) { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .table-foot { font-size: 12px; color: var(--muted); margin-top: 8px; }
+    .empty { text-align: center; padding: 40px 20px; color: var(--muted); }
+    .empty svg { width: 44px; height: 44px; margin: 0 auto 12px; opacity: .55; display: block; }
+    .empty h3 { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+    .empty p { font-size: 13px; line-height: 1.8; }
+
+    /* ---------- AI card (optional / paid — visually quarantined) ---------- */
+    .ai-card { border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); background: linear-gradient(var(--accent-soft), var(--surface) 70px); }
+    .badge-paid { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700; color: var(--warning); background: var(--warn-soft); border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent); padding: 4px 10px; border-radius: 999px; }
+    .key-wrap { position: relative; }
+    .key-wrap input { padding-right: 44px; }
+    .key-eye { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); width: 32px; height: 32px; border: 0; background: none; color: var(--muted); cursor: pointer; display: grid; place-items: center; border-radius: var(--r-sm); }
+    .key-eye:hover { color: var(--text); }
+    .key-eye:focus-visible { outline: none; box-shadow: var(--ring); }
+    .key-eye svg { width: 18px; height: 18px; }
+    .ai-info { font-size: 12.5px; line-height: 1.8; color: var(--muted); background: var(--surface2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 11px 13px; margin-top: 14px; }
+    .ai-progress { margin-top: 12px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+    .app-footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); line-height: 1.9; }
+
+    /* ---------- Toasts ---------- */
+    #toasts { position: fixed; right: 20px; bottom: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; max-width: min(360px, calc(100vw - 40px)); }
+    .toast { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-left: 3px solid var(--primary); border-radius: var(--r-md); box-shadow: var(--sh-lg); padding: 12px 16px; font-size: 14px; line-height: 1.6; transition: opacity .2s var(--ease), transform .2s var(--ease); animation: toastIn .24s var(--ease); }
+    .toast-success { border-left-color: var(--accent); }
+    .toast-error { border-left-color: var(--danger); }
+    .toast-info { border-left-color: var(--primary); }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+    @media (max-width: 520px) { #toasts { left: 20px; right: 20px; bottom: 16px; } }
+
+    /* ---------- Reveal & entrance motion ---------- */
+    .revealable { opacity: 0; transform: translateY(14px) scale(.985); }
+    .revealable.reveal { opacity: 1; transform: none; transition: opacity .44s var(--ease), transform .44s var(--ease); }
+    @keyframes cardIn { from { opacity: 0; transform: translateY(14px) scale(.985); } to { opacity: 1; transform: none; } }
+    #card-1 { animation: cardIn .5s var(--ease) both; }
+    @keyframes rowIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    #lb-tbody tr { animation: rowIn .3s var(--ease) both; }
+
+    /* ---------- Responsive: rail -> top horizontal stepper ---------- */
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; gap: 0; }
+      .rail { position: sticky; top: 62px; z-index: 20; background: var(--bg); padding: 10px 0 16px; margin-bottom: 4px; }
+      .stepper { flex-direction: row; justify-content: space-between; gap: 4px; padding: 2px 6px; }
+      .stepper-track, .stepper-fill { left: 28px; right: 28px; top: 20px; bottom: auto; width: auto; height: 2px; }
+      .stepper-fill { height: 2px; width: calc(var(--step-progress, 0) * 100%); transition: width .4s var(--ease); }
+      .step-node button { flex-direction: column; gap: 6px; align-items: center; }
+      .node-label { font-size: 10.5px; }
+      .rail-trust { display: none; }
+    }
+
+    /* ---------- Reduced motion ---------- */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+      .revealable { opacity: 1 !important; transform: none !important; }
+      .progress-track::after { animation: none; left: 0; width: 100%; opacity: .5; }
+    }
+  </style>
 </head>
 <body>
 <div class="toast-container" id="toasts"></div>
 
-<div class="app-layout">
-  <!-- ===== Sidebar ===== -->
-  <aside class="sidebar">
-    <div class="sidebar-logo">
-      <h1>telepy</h1>
-      <span>テレアポ代行AIシステム</span>
-    </div>
-    <nav class="sidebar-nav">
-      <a class="nav-item" href="index.html">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        ダッシュボード
-      </a>
-      <a class="nav-item active" href="list.html">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        リスト作成
-      </a>
-      <a class="nav-item" href="index.html">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
-        架電管理
-      </a>
-    </nav>
-    <div class="sidebar-footer">
-      telepy v1.0.0
-    </div>
-  </aside>
-
-  <!-- ===== Main ===== -->
-  <div class="main-content">
-    <div id="page-listbuilder" class="page">
-      <div class="page-header">
-        <h2>リスト作成</h2>
-        <p>依頼文を貼って、手元のCSVから条件に合う企業リストを作成します</p>
+<div class="shell">
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13c2.5 0 2.5-2.5 5-2.5S14.5 13 17 13s2.5-2.5 5-2.5"/><path d="M2 18c2.5 0 2.5-2.5 5-2.5S14.5 18 17 18s2.5-2.5 5-2.5"/></svg>
+      </span>
+      <div>
+        <div class="brand-name">telepy <span>リスト作成</span></div>
+        <div class="brand-sub">依頼文から、PC内だけで架電リストを作成</div>
       </div>
-      <div class="page-body">
+    </div>
+    <div class="header-right">
+      <span class="trust-chip" title="CSV・依頼文はこのブラウザから外に出ません">🔒 データはこの端末内で処理</span>
+      <button class="theme-toggle" id="theme-toggle" aria-label="ライト／ダークを切り替え" onclick="TP.toggleTheme()">
+        <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>
+        <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      </button>
+    </div>
+  </header>
 
-        <div style="font-size:13px;color:#166534;background:#dcfce7;padding:12px 14px;border-radius:10px;margin-bottom:12px;line-height:1.6;">
-          🔒 <strong>このブラウザ版でできること（すべてPC内で処理・CSVはアップロードされません）</strong><br>
-          ① <strong>母集団の絞り込み（無料）</strong>: 国税庁の法人番号 全件CSV（ヘッダ無しでもOK）や
-          gBizINFO一括CSVを読み込み、業種キーワード×地域×規模で絞り込み<br>
-          ② <strong>HP・電話番号のAI補完（任意・従量課金）</strong>: 絞った会社を Claude Haiku＋Web検索で調査
-          （あなたのAPIキーで直接Anthropicへ接続。目安 <strong>約¥3/社</strong>）
+  <div class="layout">
+    <nav class="rail" aria-label="進行状況">
+      <ol class="stepper" id="stepper" style="--step-progress:0">
+        <span class="stepper-track" aria-hidden="true"></span>
+        <span class="stepper-fill" aria-hidden="true"></span>
+        <li class="step-node is-active" data-step="1">
+          <button type="button"><span class="node-badge"><span class="node-num">1</span><svg class="node-check" viewBox="0 0 24 24"><path d="M5 13l4 4 10-11"/></svg></span><span class="node-label">依頼文</span></button>
+        </li>
+        <li class="step-node is-upcoming" data-step="2">
+          <button type="button"><span class="node-badge"><span class="node-num">2</span><svg class="node-check" viewBox="0 0 24 24"><path d="M5 13l4 4 10-11"/></svg></span><span class="node-label">条件</span></button>
+        </li>
+        <li class="step-node is-upcoming" data-step="3">
+          <button type="button"><span class="node-badge"><span class="node-num">3</span><svg class="node-check" viewBox="0 0 24 24"><path d="M5 13l4 4 10-11"/></svg></span><span class="node-label">CSV</span></button>
+        </li>
+        <li class="step-node is-upcoming" data-step="4">
+          <button type="button"><span class="node-badge"><span class="node-num">4</span><svg class="node-check" viewBox="0 0 24 24"><path d="M5 13l4 4 10-11"/></svg></span><span class="node-label">作成</span></button>
+        </li>
+        <li class="step-node is-upcoming" data-step="5">
+          <button type="button"><span class="node-badge"><span class="node-num">5</span><svg class="node-check" viewBox="0 0 24 24"><path d="M5 13l4 4 10-11"/></svg></span><span class="node-label">AI補完</span></button>
+        </li>
+      </ol>
+      <p class="rail-trust">ブラウザ内で完結。CSV・依頼文・APIキーはサーバーに送信されません。</p>
+    </nav>
+
+    <main class="studio">
+
+      <!-- Step 1 -->
+      <section class="step-card" id="card-1">
+        <div class="card-head">
+          <span class="head-num">1</span>
+          <div class="head-text">
+            <span class="eyebrow">ステップ 01</span>
+            <div class="card-title">依頼文を入力</div>
+            <p class="card-desc">お客様からの依頼メッセージをそのまま貼るだけ。業種・地域・規模などの条件を自動で読み取ります。</p>
+          </div>
         </div>
-        <div style="font-size:13px;color:#92400e;background:#fef3c7;padding:12px 14px;border-radius:10px;margin-bottom:16px;line-height:1.6;">
-          💰 <strong>従量課金を最小にしたい場合はローカル版が最強です。</strong>
-          手元で <code>python main.py</code> を起動すると、無料のWeb検索（DuckDuckGo）で大半のHP・電話番号を補完し、
-          <strong>迷った会社だけ</strong>AIで確認します（1000件リストで数百円程度）。
+        <div class="field">
+          <textarea id="lb-inquiry" rows="5" placeholder="例）工務店、不動産のリスト作成をお願いしたくお繋ぎいただきました！&#10;規模感は、従業員数10-20名、資本金1000万円以下、東京と神奈川で1000件程お願いできますと幸いです。"></textarea>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="LB.parse()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            条件を読み取る
+          </button>
+          <button class="btn btn-ghost" onclick="LB.fillSample()">サンプル文を入れる</button>
+        </div>
+      </section>
+
+      <!-- Step 2 -->
+      <section class="step-card revealable hidden" id="lb-criteria-card">
+        <div class="card-head">
+          <span class="head-num">2</span>
+          <div class="head-text">
+            <span class="eyebrow">ステップ 02</span>
+            <div class="card-title">条件を確認・調整</div>
+            <p class="card-desc">読み取った条件です。必要に応じてそのまま直せます。</p>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label class="field-label" for="lb-industries">業種（カンマ区切り）</label>
+            <input type="text" id="lb-industries" placeholder="工務店, 不動産">
+          </div>
+          <div class="field">
+            <label class="field-label" for="lb-prefectures">都道府県（カンマ区切り）</label>
+            <input type="text" id="lb-prefectures" placeholder="東京都, 神奈川県">
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label" for="lb-keywords">社名検索キーワード（カンマ区切り）</label>
+          <input type="text" id="lb-keywords" placeholder="工務店, 建設, 住宅, 不動産, ホーム">
+          <p class="field-help">業種名が社名に含まれる会社を集めます。</p>
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label class="field-label">従業員数</label>
+            <div class="range">
+              <input type="number" id="lb-emp-min" placeholder="10" aria-label="従業員数の下限">
+              <span class="dash">〜</span>
+              <input type="number" id="lb-emp-max" placeholder="20" aria-label="従業員数の上限">
+            </div>
+          </div>
+          <div class="field">
+            <label class="field-label" for="lb-cap-max">資本金・上限（円）</label>
+            <input type="number" id="lb-cap-max" placeholder="10000000">
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label" for="lb-count">目標件数</label>
+          <input type="number" id="lb-count" placeholder="1000">
+        </div>
+        <div class="switches">
+          <label class="switch">
+            <input type="checkbox" id="lb-unknown" checked>
+            <span class="switch-track"></span>
+            <span class="switch-text">従業員数が不明な会社もリストに含める（件数確保のため推奨）</span>
+          </label>
+          <label class="switch">
+            <input type="checkbox" id="lb-strict-cap" checked>
+            <span class="switch-track"></span>
+            <span class="switch-text">資本金の上限で厳密に絞る（外すと資本金未登録の会社も対象に）</span>
+          </label>
+        </div>
+      </section>
+
+      <!-- Step 3 -->
+      <section class="step-card revealable hidden" id="lb-data-card">
+        <div class="card-head">
+          <span class="head-num">3</span>
+          <div class="head-text">
+            <span class="eyebrow">ステップ 03</span>
+            <div class="card-title">CSVを読み込む</div>
+            <p class="card-desc">母集団になるCSVを選びます。ファイルはPC内で処理され、どこにもアップロードされません。</p>
+          </div>
+        </div>
+        <div class="dropzone" id="lb-drop"
+             ondragover="event.preventDefault();this.classList.add('dragover')"
+             ondragleave="this.classList.remove('dragover')"
+             ondrop="LB.handleDrop(event)"
+             onclick="document.getElementById('lb-file').click()">
+          <svg class="dz-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p class="dz-main" id="lb-file-label">CSVをドラッグ＆ドロップ、またはクリックして選択（複数OK・一都三県なら4県分まとめて）</p>
+          <p class="dz-sub">
+            国税庁 法人番号「全件データ」CSV（ヘッダ無し30列も自動判別・zipは解凍してから） / gBizINFO一括CSV / 手持ちのCSV<br>
+            ⚠ 国税庁サイトの「検索画面からのダウンロード」は上限10,000件です。件数が足りない場合は
+            <a href="https://www.houjin-bangou.nta.go.jp/download/zenken/" target="_blank" rel="noopener" onclick="event.stopPropagation()">全件データのダウンロード</a>から都道府県別zipを取得してください（東京都だけで約110万法人）。
+          </p>
+        </div>
+        <input type="file" id="lb-file" accept=".csv,.txt" multiple style="display:none" onchange="LB.handleFiles(this.files)">
+        <div class="grid2" style="margin-top:16px;">
+          <div class="field" style="margin-bottom:0;">
+            <label class="field-label" for="lb-encoding">文字コード</label>
+            <select id="lb-encoding">
+              <option value="auto">自動判別</option>
+              <option value="utf-8">UTF-8</option>
+              <option value="shift_jis">Shift_JIS</option>
+            </select>
+          </div>
+          <div class="field" style="margin-bottom:0;display:flex;align-items:flex-end;">
+            <button class="btn btn-ghost btn-block" onclick="LB.useSample()">同梱サンプルCSVで試す</button>
+          </div>
+        </div>
+        <button class="btn btn-success btn-block btn-cta" id="lb-run" onclick="LB.build()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-14 9V3z"/></svg>
+          リストを作成する
+        </button>
+      </section>
+
+      <!-- Progress -->
+      <section class="step-card revealable hidden" id="lb-progress-card">
+        <div class="card-head" style="margin-bottom:16px;">
+          <span class="head-num">4</span>
+          <div class="head-text">
+            <span class="eyebrow">ステップ 04</span>
+            <div class="card-title">作成中…</div>
+          </div>
+        </div>
+        <div class="progress-track" aria-hidden="true"></div>
+        <p class="progress-text" id="lb-progress-text">CSVを読み込んでいます…</p>
+      </section>
+
+      <!-- Result -->
+      <section class="step-card revealable hidden" id="lb-result-card">
+        <div class="result-head">
+          <div class="head-text">
+            <span class="eyebrow">結果</span>
+            <div class="card-title" id="lb-result-title">作成結果</div>
+          </div>
+          <div class="result-actions">
+            <button class="btn btn-primary btn-sm" onclick="LB.download('detail')">詳細CSVをダウンロード</button>
+            <button class="btn btn-ghost btn-sm" onclick="LB.download('call')">架電用CSV</button>
+          </div>
+        </div>
+        <div id="lb-stats"></div>
+        <div id="lb-note" class="note hidden"></div>
+        <div id="lb-table-wrap" class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>会社名</th><th>都道府県</th><th>所在地</th><th>資本金</th><th>従業員</th><th>業種</th><th>電話番号</th></tr>
+            </thead>
+            <tbody id="lb-tbody"></tbody>
+          </table>
+        </div>
+        <div id="lb-empty" class="empty hidden">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <h3>条件に合う会社が見つかりませんでした</h3>
+          <p>社名キーワードや都道府県をゆるめるか、文字コードの指定を見直してみてください。</p>
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('lb-criteria-card').scrollIntoView({behavior:'smooth',block:'center'})">条件を編集する</button>
+        </div>
+        <p class="table-foot">※プレビュー表示は先頭50件。全件はダウンロードCSVに含まれます。</p>
+      </section>
+
+      <!-- Step 5: AI enrich -->
+      <section class="step-card ai-card revealable hidden" id="lb-ai-card">
+        <div class="card-head">
+          <span class="head-num">5</span>
+          <div class="head-text">
+            <span class="eyebrow">ステップ 05</span>
+            <div class="card-title">HP・電話番号をAIで補完</div>
+            <p class="card-desc">電話番号が無い会社を、Claude Haiku＋Web検索で1社ずつ調べて公式サイト・電話番号を補います。</p>
+          </div>
+          <div class="head-extra"><span class="badge-paid">任意 · 従量課金</span></div>
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label class="field-label" for="lb-ai-key">Anthropic APIキー</label>
+            <div class="key-wrap">
+              <input type="password" id="lb-ai-key" placeholder="sk-ant-api03-...">
+              <button type="button" class="key-eye" aria-label="キーの表示切り替え" onclick="TP.toggleKey()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+            <p class="field-help"><a href="https://platform.claude.com/" target="_blank" rel="noopener">platform.claude.com</a> で発行。キーはこの端末にのみ保存され、送信されません。</p>
+          </div>
+          <div class="field">
+            <label class="field-label" for="lb-ai-limit">補完する件数（電話番号が無い会社の先頭から）</label>
+            <select id="lb-ai-limit">
+              <option value="10">10件だけ試す（目安 ¥30前後）</option>
+              <option value="50">50件（目安 ¥150前後）</option>
+              <option value="100">100件（目安 ¥300前後）</option>
+              <option value="0">電話番号が無い全件</option>
+            </select>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="lb-ai-run" onclick="LB.aiEnrich()">AIで補完を開始</button>
+          <button class="btn btn-danger-ghost hidden" id="lb-ai-stop" onclick="LB.aiStop()">停止</button>
+        </div>
+        <div id="lb-ai-progress" class="ai-progress hidden"></div>
+        <div class="ai-info">
+          💡 <strong>完全無料〜数百円で済ませたい場合はローカル版が最強です。</strong>
+          手元で <code>python main.py</code> を起動すると、無料のWeb検索（DuckDuckGo）で大半を補完し、迷った会社だけAIで確認します（1000件で数百円程度）。
           ブラウザ単体は外部サイトを直接巡回できない（CORS制約）ため、無料巡回はローカルのPythonが担当します。
         </div>
+      </section>
 
-        <div class="card">
-          <div class="card-title">① 依頼文を入力</div>
-          <div class="form-group">
-            <textarea id="lb-inquiry" rows="5" placeholder="例）工務店、不動産のリスト作成をお願いしたくお繋ぎいただきました！&#10;規模感は、従業員数10-20名、資本金1000万円以下、東京と神奈川で1000件程お願いできますと幸いです。"></textarea>
-          </div>
-          <div class="btn-group">
-            <button class="btn btn-primary" onclick="LB.parse()">条件を読み取る</button>
-            <button class="btn btn-secondary" onclick="LB.fillSample()">サンプル文を入れる</button>
-          </div>
-        </div>
+      <footer class="app-footer">
+        依頼文・CSV・APIキーはサーバーに送信されません（AI補完の実行時のみ、あなたのキーで直接 Anthropic に問い合わせます）。<br>
+        telepy — テレアポ代行AIシステム
+      </footer>
 
-        <div class="card hidden" id="lb-criteria-card">
-          <div class="card-title">② 抽出された条件（編集できます）</div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>業種（カンマ区切り）</label>
-              <input type="text" id="lb-industries" placeholder="工務店, 不動産">
-            </div>
-            <div class="form-group">
-              <label>都道府県（カンマ区切り）</label>
-              <input type="text" id="lb-prefectures" placeholder="東京都, 神奈川県">
-            </div>
-          </div>
-          <div class="form-group">
-            <label>社名検索キーワード（カンマ区切り・業種名が社名に含まれる会社を集めます）</label>
-            <input type="text" id="lb-keywords" placeholder="工務店, 建設, 住宅, 不動産, ホーム">
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>従業員数（下限）</label>
-              <input type="number" id="lb-emp-min" placeholder="10">
-            </div>
-            <div class="form-group">
-              <label>従業員数（上限）</label>
-              <input type="number" id="lb-emp-max" placeholder="20">
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>資本金・上限（円）</label>
-              <input type="number" id="lb-cap-max" placeholder="10000000">
-            </div>
-            <div class="form-group">
-              <label>目標件数</label>
-              <input type="number" id="lb-count" placeholder="1000">
-            </div>
-          </div>
-
-          <div class="card" style="background:#f9fafb;box-shadow:none;border:1px solid var(--gray-200);margin-bottom:16px;">
-            <div class="card-title" style="font-size:13px;">詳細オプション</div>
-            <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer;">
-              <input type="checkbox" id="lb-unknown" checked style="width:auto;">
-              従業員数が不明な会社もリストに含める（件数確保のため推奨）
-            </label>
-            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
-              <input type="checkbox" id="lb-strict-cap" checked style="width:auto;">
-              資本金の上限で厳密に絞る（外すと資本金未登録の会社も対象に）
-            </label>
-          </div>
-        </div>
-
-        <div class="card hidden" id="lb-data-card">
-          <div class="card-title">③ 検索するCSVを選ぶ</div>
-          <div class="drop-zone" id="lb-drop"
-               ondragover="event.preventDefault();this.classList.add('dragover')"
-               ondragleave="this.classList.remove('dragover')"
-               ondrop="LB.handleDrop(event)"
-               onclick="document.getElementById('lb-file').click()"
-               style="cursor:pointer;">
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto;display:block;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            <p id="lb-file-label">CSVファイルをドラッグ＆ドロップ、またはクリックして選択（複数OK・一都三県なら4県分まとめて）</p>
-            <span class="hint">国税庁 法人番号「全件データ」CSV（ヘッダ無し30列を自動判別・zipは解凍してから） / gBizINFO一括CSV / 手持ちのCSV<br>
-            ⚠ 国税庁サイトの「検索画面からのダウンロード」は上限10,000件です。件数が足りない場合は
-            <a href="https://www.houjin-bangou.nta.go.jp/download/zenken/" target="_blank" rel="noopener">全件データのダウンロード</a>から都道府県別zipを取得してください（東京都だけで約110万法人入っています）</span>
-          </div>
-          <input type="file" id="lb-file" accept=".csv,.txt" multiple style="display:none" onchange="LB.handleFiles(this.files)">
-          <div class="form-row" style="margin-top:12px;">
-            <div class="form-group">
-              <label>文字コード</label>
-              <select id="lb-encoding">
-                <option value="auto">自動判別</option>
-                <option value="utf-8">UTF-8</option>
-                <option value="shift_jis">Shift_JIS</option>
-              </select>
-            </div>
-            <div class="form-group" style="display:flex;align-items:flex-end;">
-              <button class="btn btn-secondary" onclick="LB.useSample()" style="width:100%;">同梱サンプルCSVで試す</button>
-            </div>
-          </div>
-          <div class="btn-group">
-            <button class="btn btn-success" id="lb-run" onclick="LB.build()">④ リストを作成</button>
-          </div>
-        </div>
-
-        <div class="card hidden" id="lb-progress-card">
-          <div class="card-title">検索中...</div>
-          <div class="loading"><div class="spinner"></div><span id="lb-progress-text">CSVを読み込んでいます...</span></div>
-        </div>
-
-        <div class="card hidden" id="lb-result-card">
-          <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-            <span id="lb-result-title">作成結果</span>
-            <span class="btn-group" style="margin:0;">
-              <button class="btn btn-sm btn-primary" onclick="LB.download('detail')">詳細CSVをダウンロード</button>
-              <button class="btn btn-sm btn-secondary" onclick="LB.download('call')">架電用CSV</button>
-            </span>
-          </div>
-          <div id="lb-stats" class="stats-grid" style="margin-bottom:16px;"></div>
-          <div id="lb-note" class="hidden" style="font-size:12px;color:var(--gray-500);background:#fef3c7;padding:10px 12px;border-radius:8px;margin-bottom:12px;"></div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr><th>会社名</th><th>都道府県</th><th>所在地</th><th>資本金</th><th>従業員</th><th>業種</th><th>電話番号</th></tr>
-              </thead>
-              <tbody id="lb-tbody"></tbody>
-            </table>
-          </div>
-          <p style="font-size:12px;color:var(--gray-400);margin-top:8px;">※プレビュー表示は先頭50件。全件はCSVに含まれます。</p>
-        </div>
-
-        <div class="card hidden" id="lb-ai-card">
-          <div class="card-title">⑤ HP・電話番号をAIで補完（任意・従量課金）</div>
-          <p style="font-size:13px;color:var(--gray-500);line-height:1.7;margin-bottom:12px;">
-            電話番号が無い会社を、<strong>Claude Haiku 4.5＋Web検索ツール</strong>で1社ずつ調べて
-            公式サイトURL・電話番号を補完します。あなたのAPIキーで<strong>ブラウザから直接Anthropicに接続</strong>します
-            （このページのサーバーには何も送られません。キーはこのブラウザのlocalStorageにだけ保存）。
-            目安コストは<strong>1社あたり約¥2〜4</strong>（Web検索$0.01＋トークン数円）。<br>
-            💡 完全無料〜数百円で済ませたい場合は、ローカル版の「自前データ＋無料エンリッチ」を使ってください。
-          </p>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Anthropic APIキー（<a href="https://platform.claude.com/" target="_blank" rel="noopener">platform.claude.com</a> で発行）</label>
-              <input type="password" id="lb-ai-key" placeholder="sk-ant-api03-...">
-            </div>
-            <div class="form-group">
-              <label>補完する件数（電話番号が無い会社の先頭から）</label>
-              <select id="lb-ai-limit">
-                <option value="10">10件だけ試す（目安 ¥30前後）</option>
-                <option value="50">50件（目安 ¥150前後）</option>
-                <option value="100">100件（目安 ¥300前後）</option>
-                <option value="0">電話番号が無い全件</option>
-              </select>
-            </div>
-          </div>
-          <div class="btn-group">
-            <button class="btn btn-primary" id="lb-ai-run" onclick="LB.aiEnrich()">AIで補完を開始</button>
-            <button class="btn btn-secondary hidden" id="lb-ai-stop" onclick="LB.aiStop()">停止</button>
-          </div>
-          <div id="lb-ai-progress" class="hidden" style="margin-top:10px;font-size:13px;color:var(--gray-500);"></div>
-        </div>
-
-      </div>
-    </div>
+    </main>
   </div>
 </div>
 
@@ -972,6 +1339,146 @@ var LB = {
     if (saved) document.getElementById('lb-ai-key').value = saved;
   } catch (e) { /* プライベートモード等 */ }
 })();
+</script>
+
+<script>
+/* 追加のUIふるまい（テーマ切替・ステッパー同期・出現アニメ・カウントアップ）。
+   検索ロジック(LB)には一切触れず、DOMの変化を監視して見た目だけを制御する。 */
+var TP = {
+  furthest: 1,
+
+  toggleTheme: function () {
+    var cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    var next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    var meta = document.querySelector('meta[name="theme-color"]');
+    try { localStorage.setItem('telepy_theme', next); } catch (e) {}
+  },
+
+  toggleKey: function () {
+    var i = document.getElementById('lb-ai-key');
+    if (i) i.type = (i.type === 'password') ? 'text' : 'password';
+  },
+
+  reachStep: function (n) {
+    if (n > this.furthest) this.furthest = n;
+    this.paint();
+  },
+
+  paint: function () {
+    var f = this.furthest;
+    var nodes = document.querySelectorAll('.step-node');
+    for (var i = 0; i < nodes.length; i++) {
+      var s = parseInt(nodes[i].getAttribute('data-step'), 10);
+      nodes[i].classList.remove('is-done', 'is-active', 'is-upcoming');
+      if (s < f) nodes[i].classList.add('is-done');
+      else if (s === f) nodes[i].classList.add('is-active');
+      else nodes[i].classList.add('is-upcoming');
+    }
+    var stp = document.getElementById('stepper');
+    if (stp) stp.style.setProperty('--step-progress', ((f - 1) / 4).toFixed(4));
+  },
+
+  gotoStep: function (step) {
+    var map = { 1: 'card-1', 2: 'lb-criteria-card', 3: 'lb-data-card', 4: 'lb-result-card', 5: 'lb-ai-card' };
+    var el = document.getElementById(map[step]);
+    if (step === 4 && (!el || el.classList.contains('hidden'))) el = document.getElementById('lb-run');
+    if (el && !el.classList.contains('hidden')) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  },
+
+  countUp: function () {
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var values = document.querySelectorAll('#lb-stats .value');
+    for (var i = 0; i < values.length; i++) {
+      (function (v) {
+        if (v.dataset.counted) return;
+        var raw = (v.textContent || '').trim();
+        v.dataset.counted = '1';
+        if (!/^[\d,]+$/.test(raw)) return;
+        var target = parseInt(raw.replace(/,/g, ''), 10);
+        if (!isFinite(target) || target <= 0 || reduce) return;
+        var start = null, dur = 600;
+        function tick(now) {
+          if (start === null) start = now;
+          var p = Math.min(1, (now - start) / dur);
+          var e = 1 - Math.pow(1 - p, 3);
+          v.textContent = Math.round(target * e).toLocaleString();
+          if (p < 1) requestAnimationFrame(tick); else v.textContent = target.toLocaleString();
+        }
+        requestAnimationFrame(tick);
+      })(values[i]);
+    }
+  },
+
+  watch: function (id, onShow, onHide) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var self = this;
+    var obs = new MutationObserver(function () {
+      var hidden = el.classList.contains('hidden');
+      if (!hidden && !el.dataset.shown) {
+        el.dataset.shown = '1';
+        requestAnimationFrame(function () { el.classList.add('reveal'); });
+        if (onShow) onShow();
+      } else if (hidden && el.dataset.shown) {
+        el.dataset.shown = '';
+        el.classList.remove('reveal');
+        if (onHide) onHide();
+      }
+    });
+    obs.observe(el, { attributes: true, attributeFilter: ['class'] });
+  },
+
+  init: function () {
+    var self = this;
+    this.paint();
+
+    var btns = document.querySelectorAll('.step-node button');
+    for (var i = 0; i < btns.length; i++) {
+      (function (b) {
+        b.addEventListener('click', function () {
+          self.gotoStep(parseInt(b.parentNode.getAttribute('data-step'), 10));
+        });
+      })(btns[i]);
+    }
+
+    this.watch('lb-criteria-card', function () {
+      self.reachStep(2);
+      var card = document.getElementById('lb-criteria-card');
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(function () {
+        var first = document.getElementById('lb-industries');
+        try { if (first) first.focus({ preventScroll: true }); } catch (e) {}
+      }, 440);
+    });
+    this.watch('lb-data-card');
+    this.watch('lb-progress-card', function () { self.reachStep(4); });
+    this.watch('lb-result-card', function () { self.reachStep(5); self.countUp(); });
+    this.watch('lb-ai-card');
+
+    var stats = document.getElementById('lb-stats');
+    if (stats) new MutationObserver(function () { self.countUp(); }).observe(stats, { childList: true });
+
+    var lbl = document.getElementById('lb-file-label');
+    var drop = document.getElementById('lb-drop');
+    if (lbl) new MutationObserver(function () {
+      var has = /^選択中/.test((lbl.textContent || '').trim());
+      if (drop) drop.classList.toggle('has-files', has);
+      if (has) self.reachStep(4);
+    }).observe(lbl, { childList: true, characterData: true, subtree: true });
+
+    var tb = document.getElementById('lb-tbody');
+    var empty = document.getElementById('lb-empty');
+    var tw = document.getElementById('lb-table-wrap');
+    if (tb) new MutationObserver(function () {
+      var none = tb.children.length === 0;
+      if (empty) empty.classList.toggle('hidden', !none);
+      if (tw) tw.classList.toggle('hidden', none);
+    }).observe(tb, { childList: true });
+  }
+};
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { TP.init(); });
+else TP.init();
 </script>
 </body>
 </html>
