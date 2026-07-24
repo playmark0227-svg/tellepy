@@ -3,530 +3,393 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>telepy - テレアポ代行AI管理画面</title>
-  <link rel="stylesheet" href="css/style.css">
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <meta name="theme-color" content="#F3F5F9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0E1420" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%232D54D8'/%3E%3Cpath d='M4 13c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2' stroke='white' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3Cpath d='M4 17.5c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2' stroke='%237FE0D5' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+  <title>telepy — 架電リストを、この端末だけで</title>
+  <meta name="description" content="依頼文を貼るだけ。国税庁の全件データ（無料）から条件に合う会社を集め、電話番号までAIで補完する架電リスト作成ツール。すべてPC内で処理します。">
+  <script>
+    document.documentElement.classList.add('js');
+    (function () {
+      try {
+        var t = localStorage.getItem('telepy_theme');
+        if (t !== 'light' && t !== 'dark') t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (e) { document.documentElement.setAttribute('data-theme', 'light'); }
+    })();
+  </script>
+  <style>
+    :root {
+      --font: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", "Yu Gothic", Meiryo, sans-serif;
+      --bg: #F3F5F9; --surface: #FFFFFF; --surface2: #EDF0F6;
+      --primary: #2D54D8; --primary-hover: #2143BE; --on-primary: #FFFFFF;
+      --accent: #0E9A8C; --accent-strong: #0B7C71;
+      --text: #182031; --muted: #586274; --border: #E0E5EE;
+      --success: #12855A; --warning: #B5730B; --danger: #C63636;
+      --primary-soft: color-mix(in srgb, var(--primary) 8%, var(--surface));
+      --accent-soft: color-mix(in srgb, var(--accent) 12%, var(--surface));
+      --ring: 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent);
+      --sh-sm: 0 1px 2px rgba(20,28,48,.06);
+      --sh-md: 0 4px 16px -4px rgba(20,28,48,.10);
+      --sh-lg: 0 12px 40px -12px rgba(20,28,48,.18);
+      --card-inset: none;
+      --r-sm: 8px; --r-md: 12px; --r-lg: 18px;
+      --ease: cubic-bezier(.22,.61,.36,1); --ease-quick: cubic-bezier(.4,0,.2,1);
+      color-scheme: light;
+    }
+    :root[data-theme="dark"] {
+      --bg: #0E1420; --surface: #161E2C; --surface2: #1E2839;
+      --primary: #5B82F0; --primary-hover: #7597F4; --on-primary: #0E1420;
+      --accent: #3BC7B8; --accent-strong: #7FE0D5;
+      --text: #E7EBF3; --muted: #9BA7BD; --border: #2A3448;
+      --success: #34C77B; --warning: #E0A340; --danger: #F0655C;
+      --primary-soft: color-mix(in srgb, var(--primary) 16%, var(--surface));
+      --accent-soft: color-mix(in srgb, var(--accent) 16%, var(--surface));
+      --sh-sm: 0 1px 2px rgba(0,0,0,.4);
+      --sh-md: 0 6px 20px -6px rgba(0,0,0,.5);
+      --sh-lg: 0 16px 48px -14px rgba(0,0,0,.6);
+      --card-inset: inset 0 1px 0 rgba(255,255,255,.04);
+      color-scheme: dark;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+    body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.8; font-feature-settings: "palt" 1; letter-spacing: .01em; -webkit-font-smoothing: antialiased; transition: background .22s var(--ease), color .22s var(--ease); }
+    a { color: var(--primary); text-decoration: none; }
+    ::selection { background: color-mix(in srgb, var(--primary) 24%, transparent); }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; border: 2px solid var(--bg); }
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+
+    /* Nav */
+    .nav { position: sticky; top: 0; z-index: 40; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: saturate(180%) blur(10px); border-bottom: 1px solid transparent; transition: border-color .2s, background .2s; }
+    .nav.scrolled { border-color: var(--border); }
+    .nav-inner { display: flex; align-items: center; gap: 16px; height: 62px; }
+    .brand { display: flex; align-items: center; gap: 11px; }
+    .brand-mark { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: linear-gradient(135deg, var(--primary), var(--accent)); color: #fff; box-shadow: var(--sh-sm); }
+    .brand-mark svg { width: 21px; height: 21px; }
+    .brand-name { font-size: 17px; font-weight: 700; }
+    .brand-name span { color: var(--muted); font-weight: 600; font-size: 13px; margin-left: 2px; }
+    .nav-links { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    .nav-link { font-size: 13.5px; font-weight: 600; color: var(--muted); padding: 8px 12px; border-radius: var(--r-sm); transition: color .12s, background .12s; }
+    .nav-link:hover { color: var(--text); background: var(--surface2); }
+    @media (max-width: 680px) { .nav-link.opt { display: none; } }
+    .theme-toggle { width: 38px; height: 38px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); display: grid; place-items: center; cursor: pointer; transition: color .12s, border-color .12s; }
+    .theme-toggle:hover { color: var(--text); border-color: var(--primary); }
+    .theme-toggle:focus-visible { outline: none; box-shadow: var(--ring); }
+    .theme-toggle svg { width: 18px; height: 18px; }
+    .theme-toggle .i-sun { display: none; }
+    :root[data-theme="dark"] .theme-toggle .i-moon { display: none; }
+    :root[data-theme="dark"] .theme-toggle .i-sun { display: block; }
+
+    /* Buttons */
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-family: inherit; font-size: 15px; font-weight: 600; line-height: 1; border: 1px solid transparent; border-radius: var(--r-md); padding: 0 20px; height: 46px; cursor: pointer; transition: transform .12s var(--ease-quick), background .12s, box-shadow .12s, border-color .12s; white-space: nowrap; }
+    .btn svg { width: 18px; height: 18px; }
+    .btn:hover { transform: translateY(-1px); }
+    .btn:active { transform: translateY(0) scale(.985); }
+    .btn:focus-visible { outline: none; box-shadow: var(--ring); }
+    .btn-primary { background: var(--primary); color: var(--on-primary); box-shadow: var(--sh-md); }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-ghost { background: var(--surface); color: var(--text); border-color: var(--border); }
+    .btn-ghost:hover { background: var(--surface2); }
+    .btn-lg { height: 52px; font-size: 16px; padding: 0 26px; }
+    .btn-sm { height: 40px; font-size: 14px; padding: 0 16px; }
+
+    /* Hero */
+    .hero { padding: 72px 0 40px; text-align: center; }
+    .trust-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--accent-strong); background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent); padding: 6px 14px; border-radius: 999px; margin-bottom: 22px; }
+    .hero h1 { font-size: clamp(30px, 6vw, 46px); font-weight: 800; line-height: 1.35; letter-spacing: .01em; }
+    .hero h1 .grad { background: linear-gradient(120deg, var(--primary), var(--accent)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+    .hero p.lead { font-size: clamp(15px, 2.4vw, 18px); color: var(--muted); max-width: 620px; margin: 18px auto 0; line-height: 1.9; }
+    .hero-cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 30px; }
+    .hero-note { font-size: 12.5px; color: var(--muted); margin-top: 16px; }
+
+    /* Product frame */
+    .frame { margin: 40px auto 0; max-width: 900px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--sh-lg), var(--card-inset); overflow: hidden; }
+    .frame-bar { display: flex; align-items: center; gap: 7px; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--surface2); }
+    .frame-dot { width: 11px; height: 11px; border-radius: 999px; background: var(--border); }
+    .frame-url { margin-left: 10px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .frame-body { display: grid; grid-template-columns: 168px 1fr; min-height: 300px; }
+    .frame-rail { border-right: 1px solid var(--border); padding: 20px 16px; display: flex; flex-direction: column; gap: 18px; background: var(--surface); }
+    .frame-step { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; color: var(--muted); }
+    .frame-step .b { width: 24px; height: 24px; border-radius: 999px; display: grid; place-items: center; font-size: 12px; font-weight: 700; border: 2px solid var(--border); background: var(--surface); flex-shrink: 0; }
+    .frame-step.done { color: var(--text); }
+    .frame-step.done .b { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .frame-step.active { color: var(--text); }
+    .frame-step.active .b { border-color: var(--primary); color: var(--primary); }
+    .frame-main { padding: 22px; }
+    .frame-main .eyebrow { font-size: 10.5px; font-weight: 700; letter-spacing: .14em; color: var(--accent-strong); }
+    .frame-main h4 { font-size: 16px; font-weight: 700; margin: 4px 0 14px; }
+    .frame-line { height: 10px; border-radius: 6px; background: var(--surface2); margin-bottom: 10px; }
+    .frame-line.w70 { width: 70%; } .frame-line.w50 { width: 50%; } .frame-line.w85 { width: 85%; }
+    .frame-cta { margin-top: 16px; height: 40px; border-radius: var(--r-md); background: linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--accent) 60%, var(--primary))); display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 14px; }
+    @media (max-width: 620px) { .frame-body { grid-template-columns: 1fr; } .frame-rail { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--border); } }
+
+    /* Sections */
+    section.block { padding: 56px 0; }
+    .sec-head { text-align: center; max-width: 640px; margin: 0 auto 36px; }
+    .sec-head .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .14em; color: var(--accent-strong); }
+    .sec-head h2 { font-size: clamp(22px, 4vw, 30px); font-weight: 800; line-height: 1.5; margin-top: 8px; }
+    .sec-head p { font-size: 14.5px; color: var(--muted); margin-top: 12px; line-height: 1.9; }
+
+    .cards3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    @media (max-width: 760px) { .cards3 { grid-template-columns: 1fr; } }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--sh-md), var(--card-inset); padding: 24px; }
+    .card .ic { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--primary-soft); color: var(--primary); margin-bottom: 14px; }
+    .card .ic svg { width: 22px; height: 22px; }
+    .card .step-no { font-size: 11px; font-weight: 700; letter-spacing: .12em; color: var(--accent-strong); }
+    .card h3 { font-size: 16.5px; font-weight: 700; margin: 6px 0 8px; }
+    .card p { font-size: 13.5px; color: var(--muted); line-height: 1.9; }
+
+    .feat { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    @media (max-width: 760px) { .feat { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 480px) { .feat { grid-template-columns: 1fr; } }
+    .feat-item { display: flex; gap: 11px; align-items: flex-start; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 16px; }
+    .feat-item .fic { color: var(--accent); flex-shrink: 0; margin-top: 1px; }
+    .feat-item .fic svg { width: 20px; height: 20px; }
+    .feat-item b { font-size: 14px; font-weight: 700; display: block; }
+    .feat-item span { font-size: 12.5px; color: var(--muted); line-height: 1.8; }
+
+    /* Pricing */
+    .price-wrap { max-width: 760px; margin: 0 auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--sh-md); overflow: hidden; }
+    .price-row { display: grid; grid-template-columns: 1.4fr 1.6fr 1fr; gap: 12px; padding: 16px 22px; border-bottom: 1px solid var(--border); align-items: center; }
+    .price-row:last-child { border-bottom: 0; }
+    .price-row.head { background: var(--surface2); font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--muted); }
+    .price-row .plan { font-size: 14.5px; font-weight: 700; }
+    .price-row .plan .tag { display: inline-block; font-size: 10.5px; font-weight: 700; color: var(--accent-strong); background: var(--accent-soft); border-radius: 999px; padding: 2px 8px; margin-left: 6px; }
+    .price-row .how { font-size: 12.5px; color: var(--muted); line-height: 1.7; }
+    .price-row .amt { font-size: 17px; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; color: var(--primary); }
+    .price-row .amt.free { color: var(--accent-strong); }
+    .price-note { font-size: 12.5px; color: var(--muted); text-align: center; margin-top: 16px; line-height: 1.9; }
+    @media (max-width: 620px) { .price-row { grid-template-columns: 1fr auto; } .price-row .how { display: none; } .price-row.head .how { display: none; } }
+
+    /* Data sources */
+    .src { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 820px; margin: 0 auto; }
+    @media (max-width: 620px) { .src { grid-template-columns: 1fr; } }
+    .src-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 20px; }
+    .src-card h4 { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .src-card .free { font-size: 10.5px; font-weight: 700; color: var(--accent-strong); background: var(--accent-soft); border-radius: 999px; padding: 2px 8px; }
+    .src-card p { font-size: 12.5px; color: var(--muted); margin-top: 8px; line-height: 1.9; }
+
+    /* CTA band */
+    .cta-band { text-align: center; background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 12%, var(--surface)), color-mix(in srgb, var(--accent) 12%, var(--surface))); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 44px 24px; }
+    .cta-band h2 { font-size: clamp(22px, 4vw, 28px); font-weight: 800; }
+    .cta-band p { color: var(--muted); margin: 12px 0 24px; font-size: 14.5px; }
+
+    footer.foot { border-top: 1px solid var(--border); margin-top: 24px; }
+    .foot-inner { padding: 28px 0 48px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); line-height: 1.9; }
+    .foot a { font-weight: 600; }
+
+    /* Reveal on scroll — hidden only when JS is available (no-JS stays visible) */
+    .reveal-on-scroll { transition: opacity .6s var(--ease), transform .6s var(--ease); }
+    html.js .reveal-on-scroll { opacity: 0; transform: translateY(20px); }
+    html.js .reveal-on-scroll.in { opacity: 1; transform: none; }
+    @keyframes heroIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+    .hero > * { animation: heroIn .6s var(--ease) both; }
+    .hero > *:nth-child(2) { animation-delay: .06s; }
+    .hero > *:nth-child(3) { animation-delay: .12s; }
+    .hero > *:nth-child(4) { animation-delay: .18s; }
+    .hero .frame { animation-delay: .24s; }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+      .reveal-on-scroll { opacity: 1 !important; transform: none !important; }
+      html { scroll-behavior: auto; }
+    }
+  </style>
 </head>
 <body>
-<div class="toast-container" id="toasts"></div>
 
-<div class="app-layout">
-  <!-- ===== Sidebar ===== -->
-  <aside class="sidebar">
-    <div class="sidebar-logo">
-      <h1>telepy</h1>
-      <span>テレアポ代行AIシステム</span>
-    </div>
-    <nav class="sidebar-nav">
-      <a class="nav-item active" data-page="dashboard">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        ダッシュボード
-      </a>
-      <a class="nav-item" data-page="settings">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-        API設定
-      </a>
-      <a class="nav-item" data-page="scripts">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        スクリプト管理
-      </a>
-      <a class="nav-item" href="list.html">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        リスト作成
-      </a>
-      <a class="nav-item" data-page="calls">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
-        架電管理
-      </a>
-      <a class="nav-item" data-page="history">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        通話履歴
-      </a>
-    </nav>
-    <div class="sidebar-footer">
-      telepy v1.0.0 (Preview)
-    </div>
-  </aside>
-
-  <!-- ===== Main ===== -->
-  <div class="main-content">
-
-    <!-- ========== Dashboard ========== -->
-    <div id="page-dashboard" class="page">
-      <div class="page-header">
-        <h2>ダッシュボード</h2>
-        <p>システムの状態と本日の実績を確認できます</p>
-      </div>
-      <div class="page-body">
-        <div class="stats-grid">
-          <div class="stat-card">
-            <div class="label">本日の架電数</div>
-            <div class="value" id="stat-total">0</div>
-          </div>
-          <div class="stat-card">
-            <div class="label">アポ獲得</div>
-            <div class="value" id="stat-appointed" style="color:var(--success)">0</div>
-          </div>
-          <div class="stat-card">
-            <div class="label">通話中</div>
-            <div class="value" id="stat-active" style="color:var(--primary)">0</div>
-          </div>
-          <div class="stat-card">
-            <div class="label">成功率</div>
-            <div class="value" id="stat-rate">-</div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-title">接続ステータス</div>
-          <div class="status-grid" id="status-grid"></div>
-        </div>
-
-        <div class="card">
-          <div class="card-title">アクティブ通話</div>
-          <div id="active-calls-table">
-            <p style="color:var(--gray-400);font-size:14px;">現在通話中のセッションはありません</p>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ========== Settings ========== -->
-    <div id="page-settings" class="page hidden">
-      <div class="page-header">
-        <h2>API設定</h2>
-        <p>各サービスのAPIキーと接続情報を管理します</p>
-      </div>
-      <div class="page-body">
-        <form id="settings-form" autocomplete="off">
-          <div class="card">
-            <div class="card-title">Twilio（通話）</div>
-            <div class="form-row">
-              <div class="form-group">
-                <label>Account SID</label>
-                <input type="text" name="twilio_account_sid" placeholder="ACxxxxxxxx">
-              </div>
-              <div class="form-group">
-                <label>Auth Token</label>
-                <input type="password" name="twilio_auth_token" placeholder="シークレットトークン">
-              </div>
-            </div>
-            <div class="form-group">
-              <label>発信用電話番号（E.164形式）</label>
-              <input type="text" name="twilio_phone_number" placeholder="+8150XXXXXXXX">
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-title">Deepgram（音声認識）</div>
-            <div class="form-group">
-              <label>API Key</label>
-              <input type="password" name="deepgram_api_key" placeholder="APIキー">
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-title">ElevenLabs（音声合成）</div>
-            <div class="form-row">
-              <div class="form-group">
-                <label>API Key</label>
-                <input type="password" name="elevenlabs_api_key" placeholder="APIキー">
-              </div>
-              <div class="form-group">
-                <label>Voice ID</label>
-                <input type="text" name="elevenlabs_voice_id" placeholder="日本語音声のVoice ID">
-              </div>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-title">Anthropic（会話AI）</div>
-            <div class="form-group">
-              <label>API Key</label>
-              <input type="password" name="anthropic_api_key" placeholder="sk-ant-xxxxxxxx">
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-title">Firebase（データベース）</div>
-            <div class="form-row">
-              <div class="form-group">
-                <label>認証JSONファイルのパス</label>
-                <input type="text" name="firebase_credentials_path" placeholder="./firebase-credentials.json">
-              </div>
-              <div class="form-group">
-                <label>プロジェクトID</label>
-                <input type="text" name="firebase_project_id" placeholder="my-project-12345">
-              </div>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-title">Slack（通知）</div>
-            <div class="form-group">
-              <label>Webhook URL</label>
-              <input type="text" name="slack_webhook_url" placeholder="https://hooks.slack.com/services/xxx">
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-title">システム設定</div>
-            <div class="form-row">
-              <div class="form-group">
-                <label>ベースURL（ngrok等）</label>
-                <input type="text" name="base_url" placeholder="https://xxxx.ngrok.io">
-              </div>
-              <div class="form-group">
-                <label>転送先電話番号（ハンドオフ用）</label>
-                <input type="text" name="forward_phone_number" placeholder="+819012345678">
-              </div>
-            </div>
-          </div>
-
-          <div class="btn-group">
-            <button type="submit" class="btn btn-primary">設定を保存</button>
-            <button type="button" class="btn btn-secondary" onclick="Settings.load()">変更を取消</button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <!-- ========== Scripts ========== -->
-    <div id="page-scripts" class="page hidden">
-      <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;">
-        <div>
-          <h2>スクリプト管理</h2>
-          <p>クライアントごとの架電スクリプトを作成・編集できます</p>
-        </div>
-        <button class="btn btn-primary" onclick="Scripts.showCreate()">+ 新規作成</button>
-      </div>
-      <div class="page-body">
-        <div class="script-list" id="script-list">
-          <div class="loading"><div class="spinner"></div>読み込み中...</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ========== Calls ========== -->
-    <div id="page-calls" class="page hidden">
-      <div class="page-header">
-        <h2>架電管理</h2>
-        <p>電話番号を指定して架電・モニタリングできます</p>
-      </div>
-      <div class="page-body">
-        <div class="calls-layout">
-          <!-- 左カラム: コントロール -->
-          <div class="calls-left">
-            <!-- クイック架電バー -->
-            <div class="card quick-call-bar">
-              <div class="quick-call-row">
-                <input type="text" id="call-phone" placeholder="電話番号（+819012345678）" class="quick-call-input">
-                <select id="call-script" class="quick-call-script"></select>
-                <button class="btn btn-success" onclick="Calls.initiate()">架電開始</button>
-              </div>
-              <div class="quick-call-actions">
-                <button class="btn btn-sm btn-secondary" onclick="document.getElementById('csv-file').click()">
-                  📁 CSV一括
-                </button>
-                <input type="file" id="csv-file" accept=".csv" style="display:none" onchange="Calls.handleFile(this.files[0])">
-                <button class="btn btn-sm btn-secondary" onclick="Calls.clearAll()">🗑 履歴クリア</button>
-              </div>
-              <div id="csv-preview" class="csv-preview hidden"></div>
-              <div id="csv-actions" class="btn-group hidden" style="margin-top:8px">
-                <button class="btn btn-sm btn-success" onclick="Calls.batchCall()">一括架電開始</button>
-                <button class="btn btn-sm btn-secondary" onclick="Calls.clearCsv()">クリア</button>
-              </div>
-            </div>
-
-            <!-- 通話セッション一覧（最上部に配置） -->
-            <div class="card">
-              <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
-                <span>通話中セッション</span>
-                <div style="display:flex;gap:6px;align-items:center;">
-                  <span class="badge badge-info" id="session-count">0件</span>
-                  <span id="session-stats" style="font-size:11px;color:var(--gray-500);"></span>
-                </div>
-              </div>
-              <!-- フィルタータブ -->
-              <div class="session-filters" id="session-filters">
-                <button class="session-filter-btn active" data-filter="all" onclick="Calls.setFilter('all')">すべて</button>
-                <button class="session-filter-btn" data-filter="active" onclick="Calls.setFilter('active')">通話中</button>
-                <button class="session-filter-btn" data-filter="appointed" onclick="Calls.setFilter('appointed')">アポ獲得</button>
-                <button class="session-filter-btn" data-filter="rejected" onclick="Calls.setFilter('rejected')">断り/不在</button>
-              </div>
-              <div id="call-sessions">
-                <p class="sessions-empty" style="color:var(--gray-400);font-size:14px;">通話中のセッションはありません</p>
-              </div>
-            </div>
-
-            <!-- ドロップゾーン（折りたたみ可能） -->
-            <div class="card csv-drop-card hidden" id="csv-drop-card">
-              <div class="card-title">CSV一括架電</div>
-              <div class="drop-zone" id="csv-drop"
-                   ondragover="event.preventDefault();this.classList.add('dragover')"
-                   ondragleave="this.classList.remove('dragover')"
-                   ondrop="Calls.handleDrop(event)"
-                   onclick="document.getElementById('csv-file').click()">
-                <p>CSVファイルをドラッグ＆ドロップ</p>
-                <span class="hint">形式: phone_number, company_name</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- 右カラム: ライブモニター -->
-          <div class="calls-right">
-            <div class="monitor-panel">
-              <!-- ヘッダー -->
-              <div class="monitor-header" id="monitor-header">
-                <div class="monitor-header-top">
-                  <div class="monitor-title">
-                    <div class="monitor-pulse" id="monitor-pulse"></div>
-                    <span id="monitor-status-label">待機中</span>
-                  </div>
-                  <div class="monitor-timer" id="monitor-timer">00:00</div>
-                </div>
-                <div class="monitor-phone" id="monitor-phone">-</div>
-              </div>
-
-              <!-- ステートマシン -->
-              <div class="monitor-section">
-                <div class="monitor-section-title">会話ステート</div>
-                <div class="state-flow" id="state-flow">
-                  <div class="state-node" data-state="GREETING">
-                    <div class="state-icon">👋</div>
-                    <div class="state-label">挨拶</div>
-                  </div>
-                  <div class="state-arrow">→</div>
-                  <div class="state-node" data-state="QUALIFYING">
-                    <div class="state-icon">🔍</div>
-                    <div class="state-label">ヒアリング</div>
-                  </div>
-                  <div class="state-arrow">→</div>
-                  <div class="state-node" data-state="PITCHING">
-                    <div class="state-icon">📊</div>
-                    <div class="state-label">提案</div>
-                  </div>
-                  <div class="state-arrow">→</div>
-                  <div class="state-node" data-state="CLOSING">
-                    <div class="state-icon">🤝</div>
-                    <div class="state-label">クロージング</div>
-                  </div>
-                </div>
-                <div class="state-sub-flow" id="state-sub-flow">
-                  <div class="state-node state-warn" data-state="OBJECTION">
-                    <div class="state-icon">🛡️</div>
-                    <div class="state-label">断り返し</div>
-                  </div>
-                  <div class="state-node state-success" data-state="HANDOFF">
-                    <div class="state-icon">✅</div>
-                    <div class="state-label">ハンドオフ</div>
-                  </div>
-                  <div class="state-node state-danger" data-state="REJECTED">
-                    <div class="state-icon">❌</div>
-                    <div class="state-label">拒否</div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- メトリクス -->
-              <div class="monitor-section">
-                <div class="monitor-section-title">リアルタイム分析</div>
-                <div class="monitor-metrics">
-                  <div class="metric-card">
-                    <div class="metric-label">関心度</div>
-                    <div class="metric-gauge" id="metric-interest">
-                      <div class="gauge-bar"><div class="gauge-fill" id="interest-fill" style="width:0%"></div></div>
-                      <div class="gauge-value" id="interest-value">-</div>
-                    </div>
-                  </div>
-                  <div class="metric-card">
-                    <div class="metric-label">感情</div>
-                    <div class="metric-mood" id="metric-mood">-</div>
-                  </div>
-                  <div class="metric-card">
-                    <div class="metric-label">ターン数</div>
-                    <div class="metric-number" id="metric-turns">0</div>
-                  </div>
-                  <div class="metric-card">
-                    <div class="metric-label">断り回数</div>
-                    <div class="metric-number" id="metric-objections">0 / 3</div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- AI戦略 -->
-              <div class="monitor-section">
-                <div class="monitor-section-title">AI戦略</div>
-                <div class="monitor-strategy" id="monitor-strategy">
-                  <div class="strategy-badge">待機中</div>
-                </div>
-              </div>
-
-              <!-- 担当者情報 -->
-              <div class="monitor-section">
-                <div class="monitor-section-title">取得情報</div>
-                <div class="monitor-info-grid" id="monitor-info">
-                  <div class="info-item"><span class="info-label">担当者名</span><span class="info-value" id="info-name">-</span></div>
-                  <div class="info-item"><span class="info-label">アポ日時</span><span class="info-value" id="info-appo">-</span></div>
-                  <div class="info-item"><span class="info-label">メモ</span><span class="info-value" id="info-notes">-</span></div>
-                </div>
-              </div>
-
-              <!-- 会話ログ -->
-              <div class="monitor-section monitor-section-grow">
-                <div class="monitor-section-title">会話ログ（リアルタイム）</div>
-                <div class="monitor-chat" id="monitor-chat">
-                  <div class="chat-empty">架電を開始すると会話がここに表示されます</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ========== History ========== -->
-    <div id="page-history" class="page hidden">
-      <div class="page-header">
-        <h2>通話履歴</h2>
-        <p>過去の架電ログを確認できます</p>
-      </div>
-      <div class="page-body">
-        <div class="card" style="padding:12px 16px;margin-bottom:16px;">
-          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-            <select id="history-filter-status" style="padding:6px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;">
-              <option value="">全てのステータス</option>
-              <option value="appointed">アポ獲得</option>
-              <option value="rejected">断り</option>
-              <option value="absent">不在</option>
-              <option value="handoff">ハンドオフ</option>
-            </select>
-            <button class="btn btn-sm btn-secondary" onclick="History.load()">検索</button>
-          </div>
-        </div>
-        <div class="card">
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>日時</th>
-                  <th>電話番号</th>
-                  <th>担当者名</th>
-                  <th>ステータス</th>
-                  <th>アポ日時</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody id="history-tbody">
-                <tr><td colspan="6" style="text-align:center;color:var(--gray-400);">データがありません</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-
-  </div>
-</div>
-
-<!-- ===== Script Edit Modal ===== -->
-<div id="script-modal" class="modal-overlay hidden">
-  <div class="modal">
-    <h3 id="script-modal-title">スクリプト作成</h3>
-    <form id="script-form">
-      <input type="hidden" id="script-edit-name">
-      <div class="form-row">
-        <div class="form-group">
-          <label>ファイル名（英数字）</label>
-          <input type="text" id="script-filename" placeholder="my_client" required>
-        </div>
-        <div class="form-group">
-          <label>会社名</label>
-          <input type="text" id="script-client-name" placeholder="株式会社サンプル" required>
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>商材名</label>
-          <input type="text" id="script-product" placeholder="クラウド経費精算ツール" required>
-        </div>
-        <div class="form-group">
-          <label>ターゲット</label>
-          <input type="text" id="script-target" placeholder="経理担当者" required>
-        </div>
-      </div>
-      <div class="form-group">
-        <label>挨拶文</label>
-        <textarea id="script-greeting" rows="3" placeholder="お世話になっております..."></textarea>
-      </div>
-      <div class="form-group">
-        <label>商材説明（ピッチ）</label>
-        <textarea id="script-pitch" rows="4" placeholder="弊社では..."></textarea>
-      </div>
-      <div class="form-group">
-        <label>断り返しパターン</label>
-        <div id="objection-list"></div>
-        <button type="button" class="btn btn-sm btn-secondary" onclick="Scripts.addObjection()">+ パターン追加</button>
-      </div>
-      <div class="form-group">
-        <label>クロージング</label>
-        <textarea id="script-closing" rows="2" placeholder="デモのお時間を調整させていただければ..."></textarea>
-      </div>
-      <div class="form-group">
-        <label>終話</label>
-        <textarea id="script-farewell" rows="2" placeholder="お忙しい中お時間をいただき..."></textarea>
-      </div>
-      <div class="btn-group">
-        <button type="submit" class="btn btn-primary">保存</button>
-        <button type="button" class="btn btn-secondary" onclick="Scripts.closeModal()">キャンセル</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<!-- ===== Conversation Log Modal ===== -->
-<div id="log-modal" class="modal-overlay hidden">
-  <div class="modal">
-    <h3>会話ログ</h3>
-    <div id="log-modal-body" style="max-height:400px;overflow-y:auto;"></div>
-    <div class="btn-group">
-      <button class="btn btn-secondary" onclick="document.getElementById('log-modal').classList.add('hidden')">閉じる</button>
+<nav class="nav" id="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html">
+      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13c2.5 0 2.5-2.5 5-2.5S14.5 13 17 13s2.5-2.5 5-2.5"/><path d="M2 18c2.5 0 2.5-2.5 5-2.5S14.5 18 17 18s2.5-2.5 5-2.5"/></svg></span>
+      <span class="brand-name">telepy <span>リスト作成</span></span>
+    </a>
+    <div class="nav-links">
+      <a class="nav-link opt" href="#how">使い方</a>
+      <a class="nav-link opt" href="#price">料金</a>
+      <a class="nav-link opt" href="#data">データ</a>
+      <a class="btn btn-primary btn-sm" href="list.html">はじめる</a>
+      <button class="theme-toggle" aria-label="ライト／ダークを切り替え" onclick="TP.toggleTheme()">
+        <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>
+        <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      </button>
     </div>
   </div>
-</div>
+</nav>
 
-<!-- ===== Firebase Setup Modal ===== -->
-<div id="setup-overlay" class="modal-overlay hidden">
-  <div class="modal" style="max-width:540px">
-    <h3>Firebase 初期設定</h3>
-    <p style="font-size:14px;color:var(--gray-500);margin-bottom:16px;">
-      データを保存するためにFirebaseの接続設定が必要です。<br>
-      <a href="https://console.firebase.google.com/" target="_blank" style="color:var(--primary)">Firebase Console</a>
-      → プロジェクト設定 → 全般 → 「アプリを追加」(ウェブ)
-      → 表示される <code>firebaseConfig</code> を貼り付けてください。
-    </p>
-    <div class="form-group">
-      <label>firebaseConfig（JSON形式で貼り付け）</label>
-      <textarea id="setup-config" rows="8" style="font-family:monospace;font-size:12px" placeholder='{
-  "apiKey": "AIza...",
-  "authDomain": "xxx.firebaseapp.com",
-  "projectId": "xxx",
-  "storageBucket": "xxx.appspot.com",
-  "messagingSenderId": "123",
-  "appId": "1:123:web:abc"
-}'></textarea>
+<header class="hero">
+  <div class="wrap">
+    <span class="trust-chip">🔒 データはこの端末内で処理・アップロードなし</span>
+    <h1>架電リストを、<br><span class="grad">この端末だけで。</span></h1>
+    <p class="lead">依頼文を貼るだけ。国税庁の<b>全件データ（無料）</b>から条件に合う会社を集め、電話番号まで<b>AIで補完</b>。営業リストづくりが、数クリックで終わります。</p>
+    <div class="hero-cta">
+      <a class="btn btn-primary btn-lg" href="list.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        リスト作成をひらく
+      </a>
+      <a class="btn btn-ghost btn-lg" href="list.html">サンプルで試す</a>
     </div>
-    <p style="font-size:12px;color:var(--gray-400);margin-bottom:12px;">
-      ※ Firestoreのルールを<strong>テストモード</strong>で作成してください（本番では認証付きルールに変更）
-    </p>
-    <div class="btn-group">
-      <button class="btn btn-primary" onclick="Setup.connect()">接続</button>
+    <p class="hero-note">インストール不要・ブラウザだけで動作。母集団づくりは完全無料です。</p>
+
+    <div class="frame reveal-on-scroll">
+      <div class="frame-bar">
+        <span class="frame-dot"></span><span class="frame-dot"></span><span class="frame-dot"></span>
+        <span class="frame-url">telepy — リスト作成</span>
+      </div>
+      <div class="frame-body">
+        <div class="frame-rail">
+          <div class="frame-step done"><span class="b">✓</span>依頼文</div>
+          <div class="frame-step done"><span class="b">✓</span>条件</div>
+          <div class="frame-step active"><span class="b">3</span>CSV</div>
+          <div class="frame-step"><span class="b">4</span>作成</div>
+          <div class="frame-step"><span class="b">5</span>AI補完</div>
+        </div>
+        <div class="frame-main">
+          <div class="eyebrow">ステップ 03</div>
+          <h4>CSVを読み込む</h4>
+          <div class="frame-line w85"></div>
+          <div class="frame-line w70"></div>
+          <div class="frame-line w50"></div>
+          <div class="frame-cta">▸ リストを作成する</div>
+        </div>
+      </div>
     </div>
-    <div id="setup-error" style="color:var(--danger);font-size:13px;margin-top:10px;" class="hidden"></div>
   </div>
-</div>
+</header>
 
-<script src="js/app.js"></script>
+<main>
+  <section class="block" id="how">
+    <div class="wrap">
+      <div class="sec-head reveal-on-scroll">
+        <div class="eyebrow">HOW IT WORKS</div>
+        <h2>3ステップで架電リストが完成</h2>
+        <p>専門知識は不要。依頼文を貼って、CSVを選んで、必要なら電話番号をAIで埋めるだけ。</p>
+      </div>
+      <div class="cards3">
+        <div class="card reveal-on-scroll">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg></div>
+          <div class="step-no">STEP 01</div>
+          <h3>依頼文を貼る</h3>
+          <p>「工務店・不動産、従業員10-20名、一都三県で1000件」——お客様からの依頼文をそのまま貼るだけで、業種・地域・規模を自動で読み取ります。</p>
+        </div>
+        <div class="card reveal-on-scroll">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></div>
+          <div class="step-no">STEP 02</div>
+          <h3>条件で絞り込む</h3>
+          <p>国税庁の全件データ（無料・月次で自動更新）を業種キーワード×地域で絞り込み。CSVはPC内で処理され、どこにもアップロードされません。</p>
+        </div>
+        <div class="card reveal-on-scroll">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15l-1.9-4.1L5.5 9l4.6-1.4L12 3z"/><path d="M19 14l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z"/></svg></div>
+          <div class="step-no">STEP 03</div>
+          <h3>電話番号をAIで補完</h3>
+          <p>電話番号が無い会社を、Claude Haiku＋Web検索で1社ずつ調べて公式サイト・電話番号を補完（任意）。あとは架電用CSVを出力するだけ。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" style="padding-top:0;">
+    <div class="wrap">
+      <div class="feat">
+        <div class="feat-item reveal-on-scroll"><span class="fic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><div><b>母集団は完全無料</b><span>国税庁の全件データ（全国約500万法人）を無料で使用・自動更新</span></div></div>
+        <div class="feat-item reveal-on-scroll"><span class="fic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><div><b>PC内で完結</b><span>CSV・依頼文・APIキーはサーバーに送信されません</span></div></div>
+        <div class="feat-item reveal-on-scroll"><span class="fic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><div><b>1000件でもサクサク</b><span>1行ずつ処理するストリーミング検索でメモリを圧迫しない</span></div></div>
+        <div class="feat-item reveal-on-scroll"><span class="fic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><div><b>一都三県まとめて</b><span>県別CSVを4つ同時に読み込み、重複を除いて統合</span></div></div>
+        <div class="feat-item reveal-on-scroll"><span class="fic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><div><b>架電用CSVを出力</b><span>電話番号・社名のCSVをそのまま架電ツールに読み込める</span></div></div>
+        <div class="feat-item reveal-on-scroll"><span class="fic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><div><b>ライト／ダーク対応</b><span>目にやさしい配色。端末の設定に自動で追従</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="price" style="background:var(--surface2);">
+    <div class="wrap">
+      <div class="sec-head reveal-on-scroll">
+        <div class="eyebrow">PRICING</div>
+        <h2>料金は「電話番号をAIで埋める分」だけ</h2>
+        <p>名前＋住所のリストを作るだけなら¥0。電話番号・HPまで補完する時だけ、少額の従量課金が発生します。</p>
+      </div>
+      <div class="price-wrap reveal-on-scroll">
+        <div class="price-row head"><span>使い方</span><span class="how">HP・電話番号の補完</span><span style="text-align:right;">1000件の目安</span></div>
+        <div class="price-row"><span class="plan">母集団だけ<span class="tag">名前・住所</span></span><span class="how">補完なし（国税庁データそのまま）</span><span class="amt free">¥0</span></div>
+        <div class="price-row"><span class="plan">ローカル版<span class="tag">最安</span></span><span class="how">無料Web検索で大半を補完＋迷った分だけAI</span><span class="amt">¥300〜1,500</span></div>
+        <div class="price-row"><span class="plan">ブラウザ版</span><span class="how">全件をAI＋Anthropic Web検索で補完</span><span class="amt">¥3,000前後</span></div>
+      </div>
+      <p class="price-note">従量課金はAI補完（Claude Haiku＝入力$1/出力$5 per 100万トークン ＋ Web検索$10/1000回）のみ。<br>ブラウザ版はお客様自身のAPIキーで直接 Anthropic に請求されます（¥30で10件お試し可）。</p>
+    </div>
+  </section>
+
+  <section class="block" id="data">
+    <div class="wrap">
+      <div class="sec-head reveal-on-scroll">
+        <div class="eyebrow">DATA SOURCES</div>
+        <h2>信頼できる公的データが土台</h2>
+      </div>
+      <div class="src">
+        <div class="src-card reveal-on-scroll">
+          <h4>国税庁 法人番号 全件データ <span class="free">無料</span></h4>
+          <p>全国約500万法人の商号・所在地。ローカル版なら起動するだけで一都三県ぶんを自動ダウンロードし、月次更新も自動で反映します。</p>
+        </div>
+        <div class="src-card reveal-on-scroll">
+          <h4>gBizINFO（経産省） <span class="free">無料API</span></h4>
+          <p>資本金・従業員数・業種などの企業属性。ローカル版の自動巡回で、条件に合う企業を目標件数まで集められます。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="wrap">
+      <div class="cta-band reveal-on-scroll">
+        <h2>いますぐ試せます</h2>
+        <p>インストール不要。ブラウザで開いて、依頼文を貼るだけ。</p>
+        <a class="btn btn-primary btn-lg" href="list.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          リスト作成をひらく
+        </a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-inner">
+    <div>
+      <strong>telepy</strong> — テレアポ代行AIシステム<br>
+      依頼文・CSV・APIキーはサーバーに送信されません（AI補完の実行時のみ、あなたのキーで直接 Anthropic に問い合わせます）。
+    </div>
+    <div>
+      <a href="list.html">リスト作成をひらく</a><br>
+      <a href="https://www.houjin-bangou.nta.go.jp/download/zenken/" target="_blank" rel="noopener">国税庁 全件データ</a> ／
+      <a href="https://platform.claude.com/" target="_blank" rel="noopener">Anthropic APIキー</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+var TP = {
+  toggleTheme: function () {
+    var cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    var next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('telepy_theme', next); } catch (e) {}
+  },
+  init: function () {
+    var nav = document.getElementById('nav');
+    var onScroll = function () { nav.classList.toggle('scrolled', window.scrollY > 8); };
+    window.addEventListener('scroll', onScroll, { passive: true }); onScroll();
+    var items = document.querySelectorAll('.reveal-on-scroll');
+    if (!('IntersectionObserver' in window)) {
+      for (var i = 0; i < items.length; i++) items[i].classList.add('in');
+      return;
+    }
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+    }, { rootMargin: '0px 0px -8% 0px', threshold: .08 });
+    for (var j = 0; j < items.length; j++) io.observe(items[j]);
+  }
+};
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { TP.init(); });
+else TP.init();
+</script>
 </body>
 </html>
