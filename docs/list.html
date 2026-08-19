@@ -1217,6 +1217,16 @@ var LB = {
   handleFiles: function(fileList) {
     var files = Array.prototype.slice.call(fileList || []);
     if (!files.length) return;
+    // zipのまま入れられると数分走査した末に0件になるので、その場で気づけるようにする
+    var zips = files.filter(function(f) { return /\.zip$/i.test(f.name); });
+    if (zips.length) {
+      document.getElementById('lb-file-label').textContent =
+        '⚠ zipのままでは読み込めません（' + zips.map(function(f){return f.name;}).join(', ') + '）';
+      document.getElementById('lb-drop').classList.remove('has-files');
+      this._files = null;
+      toast('zipファイルは先に解凍して、中のCSVを選んでください', 'error');
+      return;
+    }
     this._files = files;
     var totalMb = files.reduce(function(s, f) { return s + f.size; }, 0) / 1048576;
     var label = files.length === 1
@@ -1323,6 +1333,7 @@ var LB = {
         '<td style="font-size:12px">' + esc(c.phone_number || '-') + '</td>' +
       '</tr>';
     }).join('');
+    if (TP.syncEmptyState) TP.syncEmptyState();  // 0件でも「見つかりませんでした」を出す
     document.getElementById('lb-result-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   },
 
@@ -1468,8 +1479,19 @@ var LB = {
 
   download: function(fmt) {
     if (!this.companies.length) { toast('先にリストを作成してください', 'error'); return; }
-    if (fmt === 'call') downloadText('call_list.csv', toCallCsv(this.companies), 'text/csv');
-    else downloadText('company_list.csv', toDetailCsv(this.companies), 'text/csv');
+    if (fmt === 'call') {
+      var withPhone = this.companies.filter(function(c) { return c.phone_number; }).length;
+      if (withPhone === 0) {
+        toast('電話番号がまだ1件もありません。⑤のAI補完で埋めてからご利用ください', 'error');
+        return;
+      }
+      if (withPhone < this.companies.length) {
+        toast('電話番号があるのは ' + withPhone + ' / ' + this.companies.length + ' 社です（残りは空欄で出力）');
+      }
+      downloadText('call_list.csv', toCallCsv(this.companies), 'text/csv');
+    } else {
+      downloadText('company_list.csv', toDetailCsv(this.companies), 'text/csv');
+    }
   }
 };
 
@@ -1630,11 +1652,17 @@ var TP = {
     var tb = document.getElementById('lb-tbody');
     var empty = document.getElementById('lb-empty');
     var tw = document.getElementById('lb-table-wrap');
-    if (tb) new MutationObserver(function () {
+    function syncEmptyState() {
+      if (!tb) return;
       var none = tb.children.length === 0;
       if (empty) empty.classList.toggle('hidden', !none);
       if (tw) tw.classList.toggle('hidden', none);
-    }).observe(tb, { childList: true });
+    }
+    if (tb) new MutationObserver(syncEmptyState).observe(tb, { childList: true });
+    // 0件のときは表が空のままで上のObserverが発火しないため、
+    // 結果描画のたびに明示的に空状態を判定できるよう公開しておく
+    this.syncEmptyState = syncEmptyState;
+    syncEmptyState();
   }
 };
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { TP.init(); });

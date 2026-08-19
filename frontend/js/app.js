@@ -555,15 +555,19 @@ const ListBuilder = {
     else note.classList.add('hidden');
 
     const fmtYen = (v) => v == null || v === '' ? '-' : '¥' + Number(v).toLocaleString();
+    // CSV由来の値をそのまま差し込まない（細工された値でのスクリプト実行を防ぐ）
+    const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     document.getElementById('lb-tbody').innerHTML = (job.companies || []).map(c =>
       `<tr>
-        <td>${c.name || '-'}</td>
-        <td>${c.prefecture || '-'}</td>
-        <td style="font-size:12px">${c.location || '-'}</td>
-        <td>${fmtYen(c.capital_stock)}</td>
-        <td>${c.employee_number ?? '-'}</td>
-        <td style="font-size:12px">${c.industry || '-'}</td>
-        <td style="font-size:12px;color:var(--gray-400)">${c.match_reason || '-'}</td>
+        <td>${esc(c.name || '-')}</td>
+        <td>${esc(c.prefecture || '-')}</td>
+        <td style="font-size:12px">${esc(c.location || '-')}</td>
+        <td>${esc(fmtYen(c.capital_stock))}</td>
+        <td>${esc(c.employee_number ?? '-')}</td>
+        <td style="font-size:12px">${esc(c.industry || '-')}</td>
+        <td style="font-size:12px">${esc(c.phone_number || '-')}</td>
+        <td style="font-size:12px;color:var(--gray-400)">${esc(c.match_reason || '-')}</td>
       </tr>`
     ).join('');
   },
