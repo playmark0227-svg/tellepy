@@ -317,6 +317,150 @@ def test_ai_extractor_gating():
     print("✓ AIフォールバックの有効/無効判定（キー未設定なら従量課金ゼロ）")
 
 
+class _FakeUsage:
+    def __init__(self, i, o, searches=0):
+        self.input_tokens = i
+        self.output_tokens = o
+        self.cache_read_input_tokens = 0
+        self.cache_creation_input_tokens = 0
+        self.server_tool_use = type("S", (), {"web_search_requests": searches})() if searches else None
+
+
+class _FakeBlock:
+    type = "text"
+
+    def __init__(self, text):
+        self.text = text
+
+
+class _FakeResp:
+    def __init__(self, text, usage):
+        self.content = [_FakeBlock(text)]
+        self.usage = usage
+
+
+def _fake_client(per_call_tokens=(1000, 50), searches=0, log=None):
+    """AnthropicのAsyncAnthropic互換の最小モック（messages.createだけ）。"""
+    class Messages:
+        async def create(self, **kw):
+            if log is not None:
+                log.append(kw)
+            return _FakeResp('{"best_index": 0, "phone_number": "03-1111-2222"}',
+                             _FakeUsage(per_call_tokens[0], per_call_tokens[1], searches))
+    class Client:
+        messages = Messages()
+    return Client()
+
+
+def test_ai_budget_stops_at_limit():
+    """トークン上限に達したらAI呼び出しを止める（費用の暴走を防ぐ）"""
+    from web_finder import AIExtractor
+
+    calls = []
+    ai = AIExtractor(api_key="sk-ant-test", budget_tokens=3000)
+    ai._client = _fake_client(per_call_tokens=(1000, 50), log=calls)
+    cands = [("https://a.example.co.jp/", "本文" * 50)]
+
+    async def run():
+        used = []
+        for _ in range(10):
+            used.append(await ai.pick_and_extract("株式会社テスト", cands))
+        return used
+
+    results = asyncio.run(run())
+    per_call = 1050  # 1回あたりの実使用トークン
+    # 10回試みても上限(3000)で打ち切られる。実際にAPIを叩いた回数＝計測値と一致すること。
+    assert 0 < ai.calls < 10, ai.calls
+    assert ai.calls == len(calls), (ai.calls, len(calls))
+    assert ai.budget_hit is True
+    # 保証: 超過は最大でも1回分まで（事前見積りで止めるため青天井にならない）
+    assert ai.total_tokens <= 3000 + per_call, ai.total_tokens
+    assert results[0] is not None, "1回目は実行される"
+    assert results[-1] is None, "上限到達後は呼ばない"
+    # 上限到達後は一切課金しない
+    before = ai.calls
+    asyncio.run(ai.pick_and_extract("株式会社テスト", cands))
+    assert ai.calls == before, "上限到達後に追加の課金が発生した"
+    print(f"✓ AIトークン上限で自動停止（{ai.calls}回・{ai.total_tokens:,}tok / 上限3,000）")
+
+
+def test_ai_budget_unlimited_and_cost():
+    """上限0なら無制限。費用はモデル別価格から実使用量で算出する"""
+    from web_finder import AIExtractor
+
+    ai = AIExtractor(api_key="sk-ant-test", budget_tokens=0, usd_jpy=155.0)
+    ai._client = _fake_client(per_call_tokens=(1000, 100))
+    cands = [("https://a.example.co.jp/", "本文")]
+
+    async def run():
+        for _ in range(5):
+            await ai.pick_and_extract("株式会社テスト", cands)
+
+    asyncio.run(run())
+    assert ai.calls == 5 and ai.budget_hit is False
+    assert ai.remaining_tokens == -1  # 無制限
+    # Haiku 4.5: 入力$1/出力$5 per MTok → 5000tok in + 500tok out
+    expect_usd = 5000 / 1e6 * 1.0 + 500 / 1e6 * 5.0
+    assert abs(ai.cost_usd() - expect_usd) < 1e-9, ai.cost_usd()
+    assert ai.cost_yen() == int(round(expect_usd * 155.0))
+    print(f"✓ 上限なしで動作・費用計算が正確（{ai.calls}回 ≒ ¥{ai.cost_yen()}）")
+
+
+def test_ai_model_pricing_and_search_cost():
+    """モデルを変えると価格表に従って費用が変わり、Web検索回数も加算される"""
+    from web_finder import AIExtractor, MODEL_PRICING
+
+    assert "claude-sonnet-5" in MODEL_PRICING and "claude-haiku-4-5" in MODEL_PRICING
+    ai = AIExtractor(api_key="sk-ant-test", model="claude-sonnet-5", usd_jpy=155.0)
+    ai._client = _fake_client(per_call_tokens=(1000, 100), searches=1)
+    cands = [("https://a.example.co.jp/", "本文")]
+    asyncio.run(ai.pick_and_extract("株式会社テスト", cands))
+    # Sonnet 5: $3/$15 per MTok ＋ Web検索 $0.01/回
+    expect = 1000 / 1e6 * 3.0 + 100 / 1e6 * 15.0 + 0.01
+    assert abs(ai.cost_usd() - expect) < 1e-9, ai.cost_usd()
+    assert ai.searches == 1
+    u = ai.usage()
+    assert u["model"] == "claude-sonnet-5" and u["cost_yen"] == int(round(expect * 155.0))
+    print(f"✓ モデル別価格＋Web検索費用を計上（sonnet-5 1回 ≒ ¥{u['cost_yen']}）")
+
+
+def test_ai_budget_does_not_block_free_enrichment():
+    """上限に達してもリスト作成は止まらず、無料ロジックの結果は残る"""
+    import httpx
+    from web_finder import AIExtractor
+
+    class FakeProvider:
+        async def search(self, client, query, max_results=20):
+            return ["https://magokoro-koumuten.co.jp/"]
+
+    def handler(request):
+        return httpx.Response(200, text=SAMPLE_HP, headers={"content-type": "text/html"})
+
+    async def run():
+        ai = AIExtractor(api_key="sk-ant-test", budget_tokens=1)  # 実質ゼロ予算
+        ai._client = _fake_client()
+        finder = WebFinder(provider=FakeProvider())
+        transport = httpx.MockTransport(handler)
+        orig = httpx.AsyncClient
+
+        def patched(*a, **k):
+            k["transport"] = transport
+            return orig(*a, **k)
+
+        httpx.AsyncClient = patched
+        try:
+            companies = [Company(name="株式会社まごころ工務店", prefecture="東京都")]
+            return await finder.enrich_companies(companies, ai_extractor=ai)
+        finally:
+            httpx.AsyncClient = orig
+
+    comps, stats = asyncio.run(run())
+    assert stats.ai_calls == 0, stats.ai_calls              # 予算ゼロ→一度も課金しない
+    assert stats.ai_cost_yen == 0
+    assert comps[0].phone_number.replace(" ", "") == "03-1234-5678"  # 無料分は取れている
+    print("✓ 上限到達でもリスト作成は継続（無料ロジックの結果は保持）")
+
+
 def test_ai_fallback_enrich():
     """名寄せで確定できない会社だけAI(モック)で確認し、HP・電話番号を補完する"""
     import httpx
@@ -436,6 +580,10 @@ if __name__ == "__main__":
         test_ai_extractor_gating,
         test_ai_fallback_enrich,
         test_ai_not_used_when_free_resolves,
+        test_ai_budget_stops_at_limit,
+        test_ai_budget_unlimited_and_cost,
+        test_ai_model_pricing_and_search_cost,
+        test_ai_budget_does_not_block_free_enrichment,
     ]
     for t in tests:
         t()

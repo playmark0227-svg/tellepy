@@ -432,6 +432,8 @@ const ListBuilder = {
       include_unknown_employee: document.getElementById('lb-unknown').checked,
       strict_capital: document.getElementById('lb-strict-cap').checked,
       ai_fallback: document.getElementById('lb-ai-fallback').checked,
+      ai_model: (document.getElementById('lb-ai-model') || {}).value || '',
+      ai_budget_tokens: parseInt((document.getElementById('lb-ai-budget') || {}).value, 10) || 0,
       detail_budget: 1500,
     };
     try {
@@ -501,9 +503,15 @@ const ListBuilder = {
       ['詳細取得', stats.enriched ?? '-'],
       ['従業員数不明', stats.unknown_employee ?? '-'],
     ];
-    // AIフォールバックを使ったモードでは、実際に叩いたAI回数（＝従量課金の実数）を表示
+    // AIフォールバックを使ったモードでは、実際に叩いた回数・トークン・実費を表示
     if (job.mode === 'local_web') {
       statItems.push(['AI確認(有料)', stats.ai_calls ?? 0]);
+      const tok = (stats.ai_input_tokens ?? 0) + (stats.ai_output_tokens ?? 0);
+      if (tok > 0 || (stats.ai_budget_tokens ?? 0) > 0) {
+        statItems.push(['AIトークン', tok.toLocaleString() +
+          (stats.ai_budget_tokens ? ' / ' + Number(stats.ai_budget_tokens).toLocaleString() : '')]);
+        statItems.push(['AI実費(概算)', '¥' + Number(stats.ai_cost_yen ?? 0).toLocaleString()]);
+      }
     }
     document.getElementById('lb-stats').innerHTML = statItems.map(([label, val]) =>
       `<div class="stat-card"><div class="label">${label}</div><div class="value">${val}</div></div>`
@@ -527,8 +535,11 @@ const ListBuilder = {
         const aiCalls = stats.ai_calls || 0;
         let m = 'ℹ 自前の企業母集団（国税庁 法人番号データ等のローカルCSV）で社名・地域を絞り、無料のWeb検索で各社の公式HP・電話番号を補完しています。大半は無料で確定し、';
         m += aiCalls > 0
-          ? `迷った ${aiCalls} 件だけをAI(Haiku)で確認しました（従量課金はこの件数ぶんだけ）。`
+          ? `迷った ${aiCalls} 件だけをAI（${stats.ai_model || 'Haiku'}）で確認しました（実費 ¥${Number(stats.ai_cost_yen || 0).toLocaleString()}）。`
           : 'AIによる確認は発生しませんでした（＝今回は外部の従量課金ゼロ）。';
+        if (stats.ai_budget_hit) {
+          m += '⚠ 設定したトークン上限に達したため、以降のAI確認は停止しました（残りは無料ロジックの結果です）。上限を上げると補完率が上がります。';
+        }
         m += '従業員数・資本金は会社概要に記載がある場合のみ取得します。';
         msgs.push(m);
       } else if (isWeb) {

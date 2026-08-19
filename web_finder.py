@@ -412,6 +412,23 @@ _AI_SYSTEM = (
     '{"best_index": <該当候補の番号 or 該当なしは-1>, "phone_number": "<電話番号 or 空文字>"}'
 )
 
+# モデル別の料金（USD / 100万トークン, 入力・出力）。
+# 併記の目安はこの表から自動計算するので、価格改定時はここだけ直せばよい。
+MODEL_PRICING = {
+    "claude-haiku-4-5": (1.0, 5.0),
+    "claude-sonnet-5": (3.0, 15.0),
+    "claude-sonnet-4-6": (3.0, 15.0),
+    "claude-opus-4-8": (5.0, 25.0),
+}
+DEFAULT_PRICING = (1.0, 5.0)
+WEB_SEARCH_USD_PER_CALL = 0.01   # Web検索ツール: $10 / 1000回
+DEFAULT_USD_JPY = 155.0
+
+
+def _est_tokens(text: str) -> int:
+    """日本語混じり文のトークン数をざっくり見積もる（上限判定を保守的に行うため）。"""
+    return int(len(text or "") * 0.8) + 8
+
 
 def _parse_json_obj(text: str):
     """モデル出力から最初のJSONオブジェクトを取り出す（緩めにパース）。"""
@@ -428,26 +445,86 @@ def _parse_json_obj(text: str):
 
 
 class AIExtractor:
-    """正規表現/名寄せで判断がつかない会社だけを、AI(Haiku)で確認・抽出する。
+    """正規表現/名寄せで判断がつかない会社だけを、AIで確認・抽出する。
 
     - 既定モデルは Claude Haiku 4.5（現行で最安。$1/$5 per MTok）
     - ANTHROPIC_API_KEY が無ければ enabled=False となり、一切APIを叩かない（＝従量課金ゼロ）
     - 候補は最大3件・各本文1500字までに切り詰めて渡すので、1回あたりのコストは小さい
+    - budget_tokens を指定すると、**実使用トークンが上限に達した時点でAI呼び出しを停止**する
+      （残りの会社は無料ロジックの結果のみで処理され、リスト作成自体は止まらない）
     """
 
     MODEL = "claude-haiku-4-5"
     MAX_CANDIDATES = 3
     SNIPPET_CHARS = 1500
+    MAX_OUTPUT_TOKENS = 200
 
-    def __init__(self, api_key: str = None, model: str = None):
+    def __init__(
+        self,
+        api_key: str = None,
+        model: str = None,
+        budget_tokens: int = None,
+        usd_jpy: float = None,
+    ):
         self.api_key = api_key if api_key is not None else os.environ.get("ANTHROPIC_API_KEY", "")
-        self.model = model or self.MODEL
+        self.model = model or os.environ.get("AI_MODEL", "") or self.MODEL
+        if budget_tokens is None:
+            budget_tokens = _as_int(os.environ.get("AI_BUDGET_TOKENS", "")) or 0
+        self.budget_tokens = max(0, int(budget_tokens or 0))  # 0 = 無制限
+        self.usd_jpy = float(usd_jpy or os.environ.get("USD_JPY") or DEFAULT_USD_JPY)
         self._client = None
-        self.calls = 0  # 実際にAPIを叩いた回数（コスト可視化用）
+        # 実測値（コスト可視化用）
+        self.calls = 0
+        self.input_tokens = 0
+        self.output_tokens = 0
+        self.searches = 0
+        self.budget_hit = False
+        # 実行中リクエストの見積り分（並列時に上限をすり抜けないよう先に確保する）
+        self._reserved = 0
 
     @property
     def enabled(self) -> bool:
         return bool(self.api_key)
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
+
+    @property
+    def remaining_tokens(self) -> int:
+        """残りトークン（上限なしなら -1）。"""
+        if not self.budget_tokens:
+            return -1
+        return max(0, self.budget_tokens - self.total_tokens)
+
+    @property
+    def budget_exceeded(self) -> bool:
+        return bool(self.budget_tokens) and self.total_tokens >= self.budget_tokens
+
+    def cost_usd(self) -> float:
+        pin, pout = MODEL_PRICING.get(self.model, DEFAULT_PRICING)
+        return (
+            self.input_tokens / 1_000_000 * pin
+            + self.output_tokens / 1_000_000 * pout
+            + self.searches * WEB_SEARCH_USD_PER_CALL
+        )
+
+    def cost_yen(self) -> int:
+        return int(round(self.cost_usd() * self.usd_jpy))
+
+    def usage(self) -> dict:
+        """進捗表示・統計用のスナップショット。"""
+        return {
+            "calls": self.calls,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "total_tokens": self.total_tokens,
+            "budget_tokens": self.budget_tokens,
+            "remaining_tokens": self.remaining_tokens,
+            "budget_hit": self.budget_hit,
+            "cost_yen": self.cost_yen(),
+            "model": self.model,
+        }
 
     def _get_client(self):
         if self._client is None:
@@ -455,12 +532,32 @@ class AIExtractor:
             self._client = AsyncAnthropic(api_key=self.api_key)
         return self._client
 
+    def _record(self, resp) -> None:
+        """レスポンスの実使用トークンを積み上げる（上限判定はこの実測値で行う）。"""
+        u = getattr(resp, "usage", None)
+        if u is None:
+            return
+        self.input_tokens += int(getattr(u, "input_tokens", 0) or 0)
+        self.output_tokens += int(getattr(u, "output_tokens", 0) or 0)
+        # プロンプトキャッシュ利用分も入力トークンとして計上（過小申告を避ける）
+        self.input_tokens += int(getattr(u, "cache_read_input_tokens", 0) or 0)
+        self.input_tokens += int(getattr(u, "cache_creation_input_tokens", 0) or 0)
+        server = getattr(u, "server_tool_use", None)
+        if server is not None:
+            self.searches += int(getattr(server, "web_search_requests", 0) or 0)
+
     async def pick_and_extract(self, company_name: str, candidates: list) -> dict:
         """candidates: [(url, cleaned_text), ...] から公式HPを選び電話番号を抽出する。
 
-        戻り値: {"url": str, "phone": str} または None（該当なし/未設定/失敗時）。
+        戻り値: {"url": str, "phone": str} または None（該当なし/未設定/上限到達/失敗時）。
         """
         if not self.enabled or not candidates:
+            return None
+        if self.budget_exceeded:
+            if not self.budget_hit:
+                self.budget_hit = True
+                logger.info("AIトークン上限(%s)に到達したため、以降は無料ロジックのみで処理します",
+                            f"{self.budget_tokens:,}")
             return None
         cands = candidates[: self.MAX_CANDIDATES]
         blocks = []
@@ -473,18 +570,32 @@ class AIExtractor:
             "該当が無ければ best_index を -1 にしてください。\n\n"
             + "\n\n".join(blocks)
         )
+        # 上限を超えそうな呼び出しは事前に見送る（超過してから気づく事故を防ぐ）。
+        # 並列実行でも同時に通過しないよう、見積り分をここで確保してから実行する。
+        need = 0
+        if self.budget_tokens:
+            need = _est_tokens(_AI_SYSTEM) + _est_tokens(user) + self.MAX_OUTPUT_TOKENS
+            if self.total_tokens + self._reserved + need > self.budget_tokens:
+                self.budget_hit = True
+                logger.info("AIトークン上限に到達（残り%s）。以降は無料ロジックのみで処理します",
+                            f"{self.remaining_tokens:,}")
+                return None
+            self._reserved += need
         try:
             client = self._get_client()
             resp = await client.messages.create(
                 model=self.model,
-                max_tokens=200,
+                max_tokens=self.MAX_OUTPUT_TOKENS,
                 system=_AI_SYSTEM,
                 messages=[{"role": "user", "content": user}],
             )
             self.calls += 1
+            self._record(resp)
         except Exception as e:  # SDK未導入・キー不正・通信失敗など
             logger.warning("AI抽出に失敗（無料分の結果のみ使用）: %s", e)
             return None
+        finally:
+            self._reserved -= need
         text = ""
         for b in resp.content:
             if getattr(b, "type", "") == "text":
@@ -641,6 +752,18 @@ class WebFinder:
         total = len(companies)
         sem = asyncio.Semaphore(concurrency)
 
+        def _ai_snapshot() -> dict:
+            """AI使用量のスナップショット。usage()を持たない差し替え実装でも落ちない。"""
+            if not ai_extractor:
+                return {}
+            getter = getattr(ai_extractor, "usage", None)
+            if callable(getter):
+                try:
+                    return getter() or {}
+                except Exception:  # 計測は本処理を止めない
+                    logger.debug("AI使用量の取得に失敗", exc_info=True)
+            return {"calls": getattr(ai_extractor, "calls", 0)}
+
         async with httpx.AsyncClient(follow_redirects=True) as client:
             async def one(comp):
                 async with sem:
@@ -649,21 +772,35 @@ class WebFinder:
                 if comp.phone_number:
                     stats.enriched += 1
                 if progress and stats.candidates % 10 == 0:
+                    u = _ai_snapshot()
                     await progress({
                         "phase": "enrich", "found": stats.candidates,
                         "enriched": stats.enriched, "target": total,
-                        "ai_calls": ai_extractor.calls if ai_extractor else 0,
+                        "ai_calls": u.get("calls", 0),
+                        "ai_tokens": u.get("total_tokens", 0),
+                        "ai_budget_tokens": u.get("budget_tokens", 0),
+                        "ai_cost_yen": u.get("cost_yen", 0),
+                        "ai_budget_hit": u.get("budget_hit", False),
                     })
             await asyncio.gather(*(one(c) for c in companies))
 
         stats.matched = total
         if ai_extractor:
-            stats.ai_calls = ai_extractor.calls
+            u = _ai_snapshot()
+            stats.ai_calls = u.get("calls", 0)
+            stats.ai_input_tokens = u.get("input_tokens", 0)
+            stats.ai_output_tokens = u.get("output_tokens", 0)
+            stats.ai_cost_yen = u.get("cost_yen", 0)
+            stats.ai_budget_tokens = u.get("budget_tokens", 0)
+            stats.ai_budget_hit = u.get("budget_hit", False)
+            stats.ai_model = u.get("model", "")
         if progress:
             await progress({
                 "phase": "done", "found": total, "matched": total,
                 "enriched": stats.enriched, "target": total,
-                "ai_calls": stats.ai_calls,
+                "ai_calls": stats.ai_calls, "ai_tokens": stats.ai_input_tokens + stats.ai_output_tokens,
+                "ai_budget_tokens": stats.ai_budget_tokens,
+                "ai_cost_yen": stats.ai_cost_yen, "ai_budget_hit": stats.ai_budget_hit,
             })
         return companies, stats
 

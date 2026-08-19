@@ -310,8 +310,24 @@
             </label>
             <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
               <input type="checkbox" id="lb-ai-fallback" checked style="width:auto;">
-              迷った会社だけAI(Haiku)で確認してHP・電話番号を補完（要 ANTHROPIC_API_KEY。未設定なら自動で無効＝従量課金ゼロ）
+              迷った会社だけAIで確認してHP・電話番号を補完（要 ANTHROPIC_API_KEY。未設定なら自動で無効＝従量課金ゼロ）
             </label>
+            <div class="form-row" style="margin-top:10px;">
+              <div class="form-group" style="margin-bottom:0;">
+                <label style="font-size:12px;">AIモデル</label>
+                <select id="lb-ai-model">
+                  <option value="claude-haiku-4-5">標準 · Haiku 4.5（最安）</option>
+                  <option value="claude-sonnet-5">高精度 · Sonnet 5</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label style="font-size:12px;">AIトークン上限（0＝無制限）</label>
+                <input type="number" id="lb-ai-budget" value="200000" min="0" step="10000">
+              </div>
+            </div>
+            <span class="hint" style="display:block;margin-top:6px;font-size:12px;color:var(--gray-400);">
+              上限に達した時点でAI呼び出しを停止します（リスト作成は無料ロジックで継続）。実費は結果画面に表示されます。
+            </span>
           </div>
 
           <div class="btn-group">

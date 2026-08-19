@@ -566,11 +566,25 @@
           <div class="field">
             <label class="field-label" for="lb-ai-limit">補完する件数（電話番号が無い会社の先頭から）</label>
             <select id="lb-ai-limit">
-              <option value="10">10件だけ試す（目安 ¥30前後）</option>
-              <option value="50">50件（目安 ¥150前後）</option>
-              <option value="100">100件（目安 ¥300前後）</option>
+              <option value="10">10件だけ試す</option>
+              <option value="50">50件</option>
+              <option value="100">100件</option>
               <option value="0">電話番号が無い全件</option>
             </select>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label class="field-label" for="lb-ai-model">精度（モデル）</label>
+            <select id="lb-ai-model" onchange="TP.updateBudgetHint()">
+              <option value="claude-haiku-4-5">標準 · Haiku 4.5（最安 ≒ ¥3/社）</option>
+              <option value="claude-sonnet-5">高精度 · Sonnet 5（≒ ¥15〜40/社）</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="field-label" for="lb-ai-budget">上限トークン（0＝無制限）</label>
+            <input type="number" id="lb-ai-budget" value="200000" min="0" step="10000" oninput="TP.updateBudgetHint()">
+            <p class="field-help" id="lb-budget-hint">上限に達した時点でAIを自動停止します。</p>
           </div>
         </div>
         <div class="btn-row">
@@ -1042,16 +1056,37 @@ function downloadText(filename, text, mime) {
 /* --- AIエンリッチ（Claude Haiku 4.5 + Web検索ツール）---
    ブラウザからAnthropic APIへ直接接続する（CORS対応の公式ヘッダを使用）。
    APIキーはこのブラウザのlocalStorageにのみ保存され、このページのサーバーには送られない。 */
-async function aiLookupCompany(apiKey, comp) {
+/* モデル別料金（USD / 100万トークン, 入力・出力）と Web検索ツール単価。
+   web_finder.py の MODEL_PRICING と揃えてある。 */
+var AI_PRICING = {
+  "claude-haiku-4-5": [1.0, 5.0],
+  "claude-sonnet-5": [3.0, 15.0]
+};
+var AI_SEARCH_USD = 0.01;   // Web検索ツール $10 / 1000回
+var USD_JPY = 155;
+/* モデルごとに使えるWeb検索ツールのバージョンが違う */
+var AI_SEARCH_TOOL = {
+  "claude-haiku-4-5": "web_search_20250305",
+  "claude-sonnet-5": "web_search_20260209"
+};
+
+function aiCostYen(model, inTok, outTok, searches) {
+  var p = AI_PRICING[model] || AI_PRICING["claude-haiku-4-5"];
+  var usd = inTok / 1e6 * p[0] + outTok / 1e6 * p[1] + (searches || 0) * AI_SEARCH_USD;
+  return Math.round(usd * USD_JPY);
+}
+
+async function aiLookupCompany(apiKey, comp, model) {
+  model = model || "claude-haiku-4-5";
   var body = {
-    model: "claude-haiku-4-5",
+    model: model,
     max_tokens: 500,
     system: 'あなたは企業の公式サイトと電話番号を調べるアシスタントです。' +
       'Web検索を使って、指定された会社の公式サイトURLと代表電話番号（日本の固定電話/フリーダイヤル）を特定してください。' +
       '電話帳・ポータル・求人サイトではなく公式サイトを優先すること。' +
       '回答の最後に必ず {"company_url": "...", "phone_number": "..."} というJSONだけの行を出力してください' +
       '（確信が持てない項目は空文字にする）。',
-    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 2 }],
+    tools: [{ type: (AI_SEARCH_TOOL[model] || "web_search_20250305"), name: "web_search", max_uses: 2 }],
     messages: [{
       role: "user",
       content: "会社名: " + comp.name + "\n所在地: " + (comp.location || comp.prefecture || "不明") +
@@ -1081,14 +1116,22 @@ async function aiLookupCompany(apiKey, comp) {
   for (var i = 0; i < blocks.length; i++) {
     if (blocks[i].type === "text") text += blocks[i].text + "\n";
   }
+  // 実使用トークン（上限判定と費用計算はこの実測値で行う）
+  var u = data.usage || {};
+  var usage = {
+    input: (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0),
+    output: u.output_tokens || 0,
+    searches: (u.server_tool_use && u.server_tool_use.web_search_requests) || 0
+  };
+  var found = null;
   var matches = text.match(/\{[^{}]*\}/g) || [];
   for (var j = matches.length - 1; j >= 0; j--) {
     try {
       var obj = JSON.parse(matches[j]);
-      if ("company_url" in obj || "phone_number" in obj) return obj;
+      if ("company_url" in obj || "phone_number" in obj) { found = obj; break; }
     } catch (e) { /* 次の候補へ */ }
   }
-  return null;
+  return { data: found, usage: usage };
 }
 
 var LB = {
@@ -1096,6 +1139,13 @@ var LB = {
   _files: null,
   _aiAbort: false,
   _aiCalls: 0,
+  _aiIn: 0,
+  _aiOut: 0,
+  _aiSearches: 0,
+  _aiReserved: 0,
+  _aiCostYen: 0,
+  _aiModel: '',
+  _aiTokens: function() { return this._aiIn + this._aiOut; },
   _lastCriteria: null,
   _lastOut: null,
 
@@ -1225,7 +1275,10 @@ var LB = {
       ['該当総数', out.total],
       ['従業員数不明', unknownEmp]
     ];
-    if (this._aiCalls > 0) statItems.push(['AI確認(有料)', this._aiCalls]);
+    if (this._aiCalls > 0) {
+      statItems.push(['AI確認(有料)', this._aiCalls]);
+      statItems.push(['AI実費(概算)', '¥' + (this._aiCostYen || 0).toLocaleString()]);
+    }
     document.getElementById('lb-stats').innerHTML = statItems.map(function(pair) {
       return '<div class="stat-card"><div class="label">' + pair[0] + '</div><div class="value" style="font-size:20px">' + pair[1] + '</div></div>';
     }).join('');
@@ -1267,11 +1320,14 @@ var LB = {
     localStorage.setItem('telepy_anthropic_key', apiKey);
 
     var limit = parseInt(document.getElementById('lb-ai-limit').value, 10);
+    var model = document.getElementById('lb-ai-model').value;
+    var budget = Math.max(0, parseInt(document.getElementById('lb-ai-budget').value, 10) || 0);
     var targets = this.companies.filter(function(c) { return !c.phone_number; });
     if (limit > 0) targets = targets.slice(0, limit);
     if (!targets.length) { toast('電話番号が無い会社がありません（補完は不要です）'); return; }
 
     this._aiAbort = false;
+    this._aiModel = model;
     var runBtn = document.getElementById('lb-ai-run');
     var stopBtn = document.getElementById('lb-ai-stop');
     var prog = document.getElementById('lb-ai-progress');
@@ -1280,21 +1336,43 @@ var LB = {
     prog.classList.remove('hidden');
 
     var self = this;
-    var done = 0, got = 0, failed = 0;
+    var done = 0, got = 0, failed = 0, budgetHit = false;
     function update() {
-      prog.textContent = '🤖 AI補完中... ' + done + ' / ' + targets.length + ' 社（電話取得 ' + got +
-        ' 件・失敗 ' + failed + ' 件）— このタブを閉じないでください';
+      var cost = aiCostYen(model, self._aiIn, self._aiOut, self._aiSearches);
+      self._aiCostYen = cost;
+      var budgetPart = budget
+        ? '｜トークン ' + self._aiTokens().toLocaleString() + ' / ' + budget.toLocaleString()
+        : '｜トークン ' + self._aiTokens().toLocaleString() + '（上限なし）';
+      prog.textContent = (budgetHit ? '🛑 上限に到達したため停止しました。' : '🤖 AI補完中... ') +
+        done + ' / ' + targets.length + ' 社（電話取得 ' + got + ' 件・失敗 ' + failed + ' 件）' +
+        budgetPart + '｜概算 ¥' + cost.toLocaleString() +
+        (budgetHit ? '' : ' — このタブを閉じないでください');
     }
     update();
 
+    /* 上限ガード。並列（2本）でも同時にすり抜けないよう、実行前に見積り分を確保する。
+       実測が1件も無い最初の1回だけは必ず通し、以降は実測平均で判定する。
+       戻り値: 確保したトークン数（-1 なら上限で実行不可）。解放は必ず同じ値で行う。 */
+    function reserve() {
+      if (!budget) return 0;
+      var est = self._aiCalls > 0 ? Math.ceil(self._aiTokens() / self._aiCalls) : 2000;
+      if (self._aiCalls === 0 && self._aiReserved === 0) { self._aiReserved += est; return est; }
+      if (self._aiTokens() + self._aiReserved + est > budget) return -1;
+      self._aiReserved += est;
+      return est;
+    }
+    function release(n) {
+      if (n > 0) self._aiReserved = Math.max(0, self._aiReserved - n);
+    }
+
     async function lookupWithRetry(comp) {
       try {
-        return await aiLookupCompany(apiKey, comp);
+        return await aiLookupCompany(apiKey, comp, model);
       } catch (e) {
         if (e.status === 429 && !self._aiAbort) {
           // レート制限: 15秒待って1回だけ再試行
           await new Promise(function(r) { setTimeout(r, 15000); });
-          return await aiLookupCompany(apiKey, comp);
+          return await aiLookupCompany(apiKey, comp, model);
         }
         throw e;
       }
@@ -1304,20 +1382,35 @@ var LB = {
     var idx = 0;
     async function worker() {
       while (!self._aiAbort) {
+        var reserved = reserve();
+        if (reserved < 0) {
+          // 実行中の呼び出しがあるなら、その実測が出てから再判定する
+          // （まだ予算が残っているのに早く止まりすぎるのを防ぐ）
+          if (self._aiReserved > 0) { await new Promise(function (r) { setTimeout(r, 120); }); continue; }
+          budgetHit = true; self._aiAbort = true; update(); break;
+        }
         var i = idx++;
-        if (i >= targets.length) break;
+        if (i >= targets.length) { release(reserved); break; }
         var comp = targets[i];
         try {
           var r = await lookupWithRetry(comp);
           self._aiCalls++;  // 成功した（=課金された）呼び出しだけ数える
-          if (r) {
-            if (!comp.company_url && r.company_url) comp.company_url = String(r.company_url).trim();
-            if (!comp.phone_number && r.phone_number) comp.phone_number = String(r.phone_number).trim();
+          if (r && r.usage) {
+            self._aiIn += r.usage.input;
+            self._aiOut += r.usage.output;
+            self._aiSearches += r.usage.searches;
+          }
+          var d = r && r.data;
+          if (d) {
+            if (!comp.company_url && d.company_url) comp.company_url = String(d.company_url).trim();
+            if (!comp.phone_number && d.phone_number) comp.phone_number = String(d.phone_number).trim();
             if (comp.phone_number) { got++; comp.match_reason = 'AIで補完（Web検索）'; }
           }
         } catch (e) {
           failed++;
           if (e.status === 401) { self._aiAbort = true; toast('APIキーが無効です: ' + e.message, 'error'); }
+        } finally {
+          release(reserved);
         }
         done++;
         update();
@@ -1327,11 +1420,15 @@ var LB = {
 
     runBtn.disabled = false;
     stopBtn.classList.add('hidden');
-    prog.textContent = (this._aiAbort ? '⏸ 停止しました。' : '✅ 完了。') +
+    var head = budgetHit ? '🛑 上限に到達したため停止しました。'
+      : (this._aiAbort ? '⏸ 停止しました。' : '✅ 完了。');
+    prog.textContent = head +
       ' ' + done + '社を処理し、電話番号 ' + got + ' 件を取得しました' +
-      '（AI呼び出し累計 ' + this._aiCalls + ' 回 ≒ 概算 ¥' + Math.round(this._aiCalls * 3).toLocaleString() + '）';
+      '（AI呼び出し ' + this._aiCalls + ' 回・トークン ' + this._aiTokens().toLocaleString() +
+      ' ≒ 実費 ¥' + this._aiCostYen.toLocaleString() + '）';
     this.refreshTable();
-    if (!this._aiAbort) toast('AI補完が完了しました（電話 ' + got + ' 件取得）');
+    if (budgetHit) toast('上限トークンに達したので停止しました（実費 ¥' + this._aiCostYen.toLocaleString() + '）');
+    else if (!this._aiAbort) toast('AI補完が完了しました（電話 ' + got + ' 件取得）');
   },
 
   refreshTable: function() {
@@ -1371,6 +1468,24 @@ var TP = {
   toggleKey: function () {
     var i = document.getElementById('lb-ai-key');
     if (i) i.type = (i.type === 'password') ? 'text' : 'password';
+  },
+
+  /* 上限トークンが「最大いくらか」を、選んだモデルの価格で即座に示す */
+  updateBudgetHint: function () {
+    var hint = document.getElementById('lb-budget-hint');
+    var mEl = document.getElementById('lb-ai-model');
+    var bEl = document.getElementById('lb-ai-budget');
+    if (!hint || !mEl || !bEl) return;
+    var budget = Math.max(0, parseInt(bEl.value, 10) || 0);
+    if (!budget) {
+      hint.textContent = '⚠ 上限なし。件数ぶんだけ課金が続きます（止めたい時は停止ボタン）。';
+      return;
+    }
+    // この用途は「Web検索結果が入力・JSONが出力」なので入力9割で見積もる
+    var p = AI_PRICING[mEl.value] || AI_PRICING['claude-haiku-4-5'];
+    var usd = budget * 0.9 / 1e6 * p[0] + budget * 0.1 / 1e6 * p[1];
+    hint.textContent = '上限に達した時点でAIを自動停止します。トークン上限ぶんの費用は最大 ¥' +
+      Math.round(usd * USD_JPY).toLocaleString() + ' 程度（＋Web検索 約¥1.5/社）。';
   },
 
   reachStep: function (n) {
@@ -1445,6 +1560,7 @@ var TP = {
   init: function () {
     var self = this;
     this.paint();
+    this.updateBudgetHint();
 
     var btns = document.querySelectorAll('.step-node button');
     for (var i = 0; i < btns.length; i++) {

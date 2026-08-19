@@ -660,6 +660,12 @@ class BuildStats:
     matched: int = 0
     unknown_employee: int = 0
     ai_calls: int = 0  # AIフォールバックで実際にAPIを叩いた回数（従量課金の実数）
+    ai_input_tokens: int = 0
+    ai_output_tokens: int = 0
+    ai_cost_yen: int = 0        # 実使用量から算出した概算費用（円）
+    ai_budget_tokens: int = 0   # 設定した上限（0=無制限）
+    ai_budget_hit: bool = False  # 上限に達してAIを打ち切ったか
+    ai_model: str = ""
     demo: bool = False
 
 

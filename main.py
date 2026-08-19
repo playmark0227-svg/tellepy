@@ -329,7 +329,9 @@ class BuildRequest(BaseModel):
     detail_budget: int = 1500
     include_unknown_employee: bool = True
     strict_capital: bool = True
-    ai_fallback: bool = True  # 迷った会社だけAI(Haiku)で確認（キー未設定なら自動で無効）
+    ai_fallback: bool = True  # 迷った会社だけAIで確認（キー未設定なら自動で無効）
+    ai_model: str = ""        # 空ならHaiku 4.5（最安）。例: claude-sonnet-5
+    ai_budget_tokens: int = 0  # AIに使うトークンの上限（0=無制限）。到達で自動停止
     demo: bool = False
 
 
@@ -381,12 +383,21 @@ async def _run_build_job(job_id: str, req: BuildRequest):
                 progress=on_progress,
             )
             if req.enrich and companies:
-                ai = AIExtractor() if req.ai_fallback else None
+                ai = AIExtractor(
+                    model=req.ai_model or None,
+                    budget_tokens=req.ai_budget_tokens,
+                ) if req.ai_fallback else None
                 companies, enrich_stats = await WebFinder().enrich_companies(
                     companies, progress=on_progress, ai_extractor=ai,
                 )
                 stats.enriched = enrich_stats.enriched
                 stats.ai_calls = enrich_stats.ai_calls
+                stats.ai_input_tokens = enrich_stats.ai_input_tokens
+                stats.ai_output_tokens = enrich_stats.ai_output_tokens
+                stats.ai_cost_yen = enrich_stats.ai_cost_yen
+                stats.ai_budget_tokens = enrich_stats.ai_budget_tokens
+                stats.ai_budget_hit = enrich_stats.ai_budget_hit
+                stats.ai_model = enrich_stats.ai_model
         else:
             builder = ListBuilder(GBizClient(), LocalDataSource())
             job["mode"] = builder.resolve_mode("demo" if req.demo else req.mode)
