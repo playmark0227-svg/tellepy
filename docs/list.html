@@ -386,7 +386,7 @@
           </div>
         </div>
         <div class="field">
-          <textarea id="lb-inquiry" rows="5" placeholder="例）工務店、不動産のリスト作成をお願いしたくお繋ぎいただきました！&#10;規模感は、従業員数10-20名、資本金1000万円以下、東京と神奈川で1000件程お願いできますと幸いです。"></textarea>
+          <textarea id="lb-inquiry" rows="5" placeholder="例）工務店、不動産のリスト作成をお願いしたくお繋ぎいただきました！&#10;規模感は、従業員数10-20名、資本金1000万円以下、一都三県で1000件程お願いできますと幸いです。"></textarea>
         </div>
         <div class="btn-row">
           <button class="btn btn-primary" onclick="LB.parse()">
@@ -631,6 +631,21 @@ var INDUSTRY_KEYWORD_PRESETS = {
   "建築": ["建築","設計","工務店","建設"]
 };
 
+// list_builder.py の REGION_ALIASES と対応（「一都三県で1000件」をそのまま貼れるように）
+var REGION_ALIASES = {
+  "一都三県": ["東京都","神奈川県","千葉県","埼玉県"],
+  "首都圏": ["東京都","神奈川県","千葉県","埼玉県"],
+  "関東": ["東京都","神奈川県","千葉県","埼玉県","茨城県","栃木県","群馬県"],
+  "関西": ["大阪府","京都府","兵庫県","奈良県","滋賀県","和歌山県"],
+  "近畿": ["大阪府","京都府","兵庫県","奈良県","滋賀県","和歌山県"],
+  "東海": ["愛知県","岐阜県","三重県","静岡県"],
+  "中京": ["愛知県","岐阜県","三重県"],
+  "九州": ["福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県"],
+  "東北": ["青森県","岩手県","宮城県","秋田県","山形県","福島県"],
+  "北陸": ["新潟県","富山県","石川県","福井県"],
+  "四国": ["徳島県","香川県","愛媛県","高知県"]
+};
+
 // list_builder.py の _COLUMN_ALIASES と対応
 var COLUMN_ALIASES = {
   corporate_number: ["法人番号","corporate_number","corporatenumber","houjin_bangou","法人番号(13桁)"],
@@ -711,19 +726,29 @@ function parseHeuristic(text) {
   for (var ind in INDUSTRY_KEYWORD_PRESETS) {
     if (text.indexOf(ind) !== -1) c.industries.push(ind);
   }
-  for (var full in PREFECTURE_CODES) {
-    var stem = full.replace(/[都道府県]$/, '');
-    var hit = text.indexOf(full) !== -1;
-    if (!hit && stem.length >= 2) {
-      // 「東京都」の中の「京都」を京都府と誤検出しないよう、前が「東」なら数えない
-      var at = text.indexOf(stem);
-      while (at !== -1) {
-        var prev = at > 0 ? text.charAt(at - 1) : '';
-        if (!(stem === '京都' && prev === '東')) { hit = true; break; }
-        at = text.indexOf(stem, at + 1);
-      }
+  // 都道府県。①まとめ言葉（一都三県・関西…）②正式名 ③略称 の順に拾い、
+  // 拾った語は文字列から消す。消さずに略称を探すと「東京都」の中の「京都」が
+  // 京都府として混ざる。
+  var rest = text;
+  var aliases = Object.keys(REGION_ALIASES).sort(function(a, b) { return b.length - a.length; });
+  for (var a = 0; a < aliases.length; a++) {
+    if (rest.indexOf(aliases[a]) === -1) continue;
+    var group = REGION_ALIASES[aliases[a]];
+    for (var g = 0; g < group.length; g++) {
+      if (c.prefectures.indexOf(group[g]) === -1) c.prefectures.push(group[g]);
     }
-    if (hit && c.prefectures.indexOf(full) === -1) c.prefectures.push(full);
+    rest = rest.split(aliases[a]).join('　');
+  }
+  for (var full in PREFECTURE_CODES) {
+    if (rest.indexOf(full) === -1) continue;
+    if (c.prefectures.indexOf(full) === -1) c.prefectures.push(full);
+    rest = rest.split(full).join('　');
+  }
+  for (var full2 in PREFECTURE_CODES) {
+    var stem = full2.replace(/[都道府県]$/, '');
+    if (stem.length < 2 || rest.indexOf(stem) === -1) continue;
+    if (c.prefectures.indexOf(full2) === -1) c.prefectures.push(full2);
+    rest = rest.split(stem).join('　');
   }
   var empRange = text.match(/従業員[数]?[^\d]{0,6}?(\d+)\s*[-〜~ー]\s*(\d+)/);
   if (empRange) { c.employee_min = parseInt(empRange[1], 10); c.employee_max = parseInt(empRange[2], 10); }
@@ -916,7 +941,10 @@ function makeSearcher(criteria, opts) {
         if (ch === '"') pendingClose = true;
         else field += ch;
       } else {
-        if (ch === '"') inQuotes = true;
+        // 引用符は「フィールドの先頭」でだけ開始と見なす。途中の " を開始と
+        // 扱うと、社名に " が1つ混じっただけで以降のファイル全体が1つの
+        // フィールドに飲み込まれ、残りの数十万行が丸ごと消える。
+        if (ch === '"' && field === "") inQuotes = true;
         else if (ch === ',') pushField();
         else if (ch === '\n') endRecord();
         else if (ch === '\r') { /* ignore */ }
@@ -938,13 +966,14 @@ function makeSearcher(criteria, opts) {
   };
 }
 
-function scoreHeaderLine(line) {
-  var cells = line.split(",");
-  var map = buildColmap(cells);
+function scoreHeaderLine(sample) {
+  // 列名の判定は1行目だけ。文字化けの判定はサンプル全体（列名が英語だと
+  // 1行目には判定材料が無く、本文の日本語を見ないと文字コードを間違える）。
+  var map = buildColmap(sample.split("\n")[0].split(","));
   var score = Object.keys(map).length * 10;
   // ヘッダ無しCSV（国税庁 全件データ等）向け: 日本語が正しく読めているかで判定
-  if (/株式会社|有限会社|合同会社|東京都|北海道|大阪府|神奈川県/.test(line)) score += 5;
-  score -= (line.match(/�/g) || []).length;  // 文字化け（置換文字）ペナルティ
+  if (/株式会社|有限会社|合同会社|東京都|北海道|大阪府|神奈川県/.test(sample)) score += 5;
+  score -= (sample.match(/�/g) || []).length;  // 文字化け（置換文字）ペナルティ
   return score;
 }
 
@@ -953,8 +982,10 @@ async function resolveEncoding(file, choice) {
   try {
     var buf = await file.slice(0, 65536).arrayBuffer();
     var u8 = new Uint8Array(buf);
-    var utf = new TextDecoder("utf-8").decode(u8).split("\n")[0];
-    var sjis = new TextDecoder("shift_jis").decode(u8).split("\n")[0];
+    // 1行目だけで判定すると、列名が英語（name,address,phone…）のShift_JISファイルは
+    // 判定材料がゼロになりUTF-8扱いになって0件になる。サンプル全体で判定する。
+    var utf = new TextDecoder("utf-8").decode(u8);
+    var sjis = new TextDecoder("shift_jis").decode(u8);
     return scoreHeaderLine(sjis) > scoreHeaderLine(utf) ? "shift_jis" : "utf-8";
   } catch (e) {
     return "utf-8";
@@ -1196,10 +1227,22 @@ var LB = {
       var v = document.getElementById(id).value.trim();
       return v === '' ? null : parseInt(v, 10);
     };
+    // 業種だけ書いて社名キーワードを空にした場合、絞り込みは name_keywords しか
+    // 見ないので「何も絞られず無関係な会社が出る」。業種から社名キーワードを補う。
+    var industries = split('lb-industries');
+    var keywords = split('lb-keywords');
+    if (keywords.length === 0 && industries.length > 0) {
+      var kws = [];
+      for (var i = 0; i < industries.length; i++) {
+        kws = kws.concat(INDUSTRY_KEYWORD_PRESETS[industries[i]] || []);
+        if (kws.indexOf(industries[i]) === -1) kws.push(industries[i]);
+      }
+      keywords = dedupe(kws);
+    }
     return {
-      industries: split('lb-industries'),
+      industries: industries,
       prefectures: split('lb-prefectures'),
-      name_keywords: split('lb-keywords'),
+      name_keywords: keywords,
       employee_min: numOrNull('lb-emp-min'),
       employee_max: numOrNull('lb-emp-max'),
       capital_max: numOrNull('lb-cap-max'),

@@ -77,6 +77,23 @@ INDUSTRY_KEYWORD_PRESETS = {
 }
 
 
+# 営業の現場でそのまま使われる地域のまとめ言葉。「一都三県で1000件」のような
+# 依頼文をそのまま貼れるようにする（県名を並べ直させない）。
+REGION_ALIASES = {
+    "一都三県": ["東京都", "神奈川県", "千葉県", "埼玉県"],
+    "首都圏": ["東京都", "神奈川県", "千葉県", "埼玉県"],
+    "関東": ["東京都", "神奈川県", "千葉県", "埼玉県", "茨城県", "栃木県", "群馬県"],
+    "関西": ["大阪府", "京都府", "兵庫県", "奈良県", "滋賀県", "和歌山県"],
+    "近畿": ["大阪府", "京都府", "兵庫県", "奈良県", "滋賀県", "和歌山県"],
+    "東海": ["愛知県", "岐阜県", "三重県", "静岡県"],
+    "中京": ["愛知県", "岐阜県", "三重県"],
+    "九州": ["福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県"],
+    "東北": ["青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県"],
+    "北陸": ["新潟県", "富山県", "石川県", "福井県"],
+    "四国": ["徳島県", "香川県", "愛媛県", "高知県"],
+}
+
+
 def prefecture_stem(full: str) -> str:
     """「東京都」→「東京」のように末尾の都/道/府/県を1文字だけ落とす。
 
@@ -267,12 +284,28 @@ class InquiryParser:
             if industry in text:
                 c.industries.append(industry)
 
-        # 都道府県（「京都府」→"京"のように末尾文字を削りすぎないよう1文字だけ落とす）
+        # 都道府県。まず正式名（「東京都」）で拾い、拾った分を文字列から消してから
+        # 略称（「東京」）を探す。消さずに略称を探すと「東京都」の中の「京都」が
+        # 京都府として拾われ、頼んでいない府県が条件に混ざる。
+        rest = text
+        # 「一都三県」「関西」などのまとめ言葉を先に展開する（長い語から順に）
+        for alias in sorted(REGION_ALIASES, key=len, reverse=True):
+            if alias in rest:
+                for full in REGION_ALIASES[alias]:
+                    if full not in c.prefectures:
+                        c.prefectures.append(full)
+                rest = rest.replace(alias, "　")
         for full in PREFECTURE_CODES:
-            stem = full[:-1] if full[-1] in "都道府県" else full
-            if full in text or (len(stem) >= 2 and stem in text):
+            if full in rest:
                 if full not in c.prefectures:
                     c.prefectures.append(full)
+                rest = rest.replace(full, "　")
+        for full in PREFECTURE_CODES:
+            stem = prefecture_stem(full)
+            if len(stem) >= 2 and stem in rest:
+                if full not in c.prefectures:
+                    c.prefectures.append(full)
+                rest = rest.replace(stem, "　")
 
         # 従業員数レンジ  「10-20名」「10〜20人」「10名以上」等
         emp_range = re.search(r"従業員[数]?[^\d]{0,6}?(\d+)\s*[-〜~ー]\s*(\d+)", text)

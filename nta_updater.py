@@ -25,7 +25,7 @@ from typing import Optional
 import httpx
 
 from corp_importer import import_nta
-from list_builder import DATA_DIR, PREFECTURE_CODES, prefecture_stem
+from list_builder import DATA_DIR, PREFECTURE_CODES, REGION_ALIASES, prefecture_stem
 
 logger = logging.getLogger(__name__)
 
@@ -41,22 +41,41 @@ ZIP_LINK_RE = re.compile(
 )
 
 
+def _resolve_prefectures(raw: str) -> tuple[list[str], list[str]]:
+    """設定文字列を都道府県名に解決する。 Returns: (解決できた県, 読めなかった語)"""
+    out: list[str] = []
+    unknown: list[str] = []
+    for token in (raw or "").replace("、", ",").split(","):
+        name = token.strip()
+        if not name:
+            continue
+        if name in REGION_ALIASES:  # 「一都三県」「関西」などのまとめ言葉
+            for full in REGION_ALIASES[name]:
+                if full not in out:
+                    out.append(full)
+            continue
+        if name in PREFECTURE_CODES:
+            if name not in out:
+                out.append(name)
+            continue
+        for full in PREFECTURE_CODES:
+            if prefecture_stem(full) == name:
+                if full not in out:
+                    out.append(full)
+                break
+        else:
+            unknown.append(name)
+    return out, unknown
+
+
 def configured_prefectures() -> list[str]:
     raw = os.environ.get("NTA_PREFECTURES", "")
     if not raw:
         return list(DEFAULT_PREFECTURES)
-    out = []
-    for token in raw.replace("、", ",").split(","):
-        name = token.strip()
-        if not name:
-            continue
-        if name in PREFECTURE_CODES:
-            out.append(name)
-        else:
-            for full in PREFECTURE_CODES:
-                if prefecture_stem(full) == name:
-                    out.append(full)
-                    break
+    out, unknown = _resolve_prefectures(raw)
+    if unknown:
+        # 黙って既定値に戻すと、数GBを取り直した末に毎回0件になる理由が分からない
+        logger.warning("NTA_PREFECTURES に読み取れない指定があります: %s", "・".join(unknown))
     return out or list(DEFAULT_PREFECTURES)
 
 
@@ -261,9 +280,11 @@ def status() -> dict:
             "file_exists": bool(f and f.exists()),
         })
     meta = state.get("_meta") or {}
+    _, unknown = _resolve_prefectures(os.environ.get("NTA_PREFECTURES", ""))
     return {
         "auto_update": auto_update_enabled(),
         "prefectures": prefs,
+        "unknown_prefectures": unknown,
         "items": items,
         "last_checked_at": meta.get("last_checked_at"),
         "last_success_at": meta.get("last_success_at"),

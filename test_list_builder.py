@@ -36,6 +36,11 @@ def test_prefecture_normalization():
     assert normalize_prefecture("神奈川") == "14"
     assert normalize_prefecture("神奈川県") == "14"
     assert normalize_prefecture("大阪") == "27"
+    # rstrip("都道府県") だと「京都府」が「京」まで削られ、京都で検索できなかった
+    assert normalize_prefecture("京都") == "26"
+    assert normalize_prefecture("京都府") == "26"
+    assert normalize_prefecture("京") is None
+    assert normalize_prefecture("北海道") == "01"
     assert normalize_prefecture("存在しない県") is None
     assert normalize_prefecture("") is None
     print("✓ 都道府県の正規化")
@@ -202,6 +207,27 @@ def test_heuristic_kyoto_not_dropped():
     assert "京都府" in c.prefectures, c.prefectures
     assert "東京都" not in c.prefectures, c.prefectures
     print("✓ 「京都」の依頼で京都府を正しく抽出（東京都と誤認しない）")
+
+
+def test_heuristic_tokyo_does_not_add_kyoto():
+    """「東京都」の中の「京都」を京都府として拾わない（頼んでいない府県を混ぜない）"""
+    parser = InquiryParser(api_key="")
+    c = asyncio.run(parser.parse("工務店のリスト。東京都と神奈川県で1000件"))
+    assert c.prefectures == ["東京都", "神奈川県"], c.prefectures
+    print("✓ 「東京都」で京都府を巻き込まない")
+
+
+def test_heuristic_region_aliases():
+    """「一都三県」「関西」など、営業がそのまま書く言い方を県名に展開する"""
+    parser = InquiryParser(api_key="")
+    c = asyncio.run(parser.parse(
+        "工務店・不動産、従業員10-20名、資本金1000万円以下、一都三県で1000件"
+    ))
+    assert c.prefectures == ["東京都", "神奈川県", "千葉県", "埼玉県"], c.prefectures
+    assert c.target_count == 1000 and c.capital_max == 10_000_000
+    c2 = asyncio.run(parser.parse("関西の工務店を200件"))
+    assert "大阪府" in c2.prefectures and "京都府" in c2.prefectures, c2.prefectures
+    print("✓ 「一都三県」「関西」などのまとめ言葉を県名に展開")
 
 
 def test_local_dedupes_across_files():
@@ -607,6 +633,8 @@ if __name__ == "__main__":
         test_partial_conversion_file_ignored,
         test_capital_units_and_prefecture_extraction,
         test_heuristic_kyoto_not_dropped,
+        test_heuristic_tokyo_does_not_add_kyoto,
+        test_heuristic_region_aliases,
         test_local_dedupes_across_files,
         test_capital_filter_skipped_when_no_capital_column,
         test_capital_filter_is_per_file_not_per_directory,

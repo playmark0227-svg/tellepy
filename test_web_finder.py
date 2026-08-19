@@ -19,6 +19,7 @@ from web_finder import (
     generate_queries,
     is_excluded,
     normalize_company_name,
+    normalize_phone,
 )
 
 SAMPLE_HP = """
@@ -209,6 +210,41 @@ def test_tel_link_phone():
     # tel:リンクの番号を優先して拾う（フリーダイヤルの誤検出を避ける）
     assert c.phone_number.replace(" ", "") == "03-3999-8888", c.phone_number
     print("✓ tel:リンクを最優先で電話番号抽出")
+
+
+FAX_TEL_LINK_HP = """
+<html><head><title>会社概要｜さくら工務店</title></head><body>
+<table>
+<tr><th>FAX</th><td><a href="tel:03-1111-2222">03-1111-2222</a></td></tr>
+<tr><th>TEL</th><td><a href="tel:03-3333-4444">03-3333-4444</a></td></tr>
+</table>
+</body></html>
+"""
+
+
+def test_fax_tel_link_is_not_called():
+    """FAX番号がtel:リンクになっていても架電先にしない"""
+    c = extract_company("https://sakura.co.jp/", FAX_TEL_LINK_HP)
+    assert c.phone_number == "03-3333-4444", c.phone_number
+    print("✓ FAXがtel:リンクでも架電先にしない（本物のTELを拾う）")
+
+
+def test_normalize_phone():
+    """架電できない文字列を電話番号カラムに入れない（そのままTwilioに渡るため）"""
+    # 見やすい表記はそのまま活かす
+    assert normalize_phone("03-1234-5678") == "03-1234-5678"
+    # 括弧・全角・空白まじりは数字に正規化
+    assert normalize_phone("TEL:(011)222-3333".replace("TEL:", "")) == "0112223333"
+    assert normalize_phone("03 1234 5678") == "0312345678"
+    # 国番号つきは国内表記に直す（従来は桁数オーバーで捨てていた）
+    assert normalize_phone("+81-3-1234-5678") == "0312345678"
+    assert normalize_phone("+81 90 1234 5678") == "09012345678"
+    # 番号として成立しないものは通さない
+    assert normalize_phone("お問い合わせください") == ""
+    assert normalize_phone("123") == ""
+    assert normalize_phone("1234567890") == ""   # 0で始まらない
+    assert normalize_phone("") == ""
+    print("✓ 電話番号の正規化（括弧・国番号・非番号の除去）")
 
 
 def test_find_contact_url():
@@ -578,6 +614,8 @@ if __name__ == "__main__":
         test_passes_filter,
         test_web_find_with_fake_provider,
         test_tel_link_phone,
+        test_fax_tel_link_is_not_called,
+        test_normalize_phone,
         test_find_contact_url,
         test_normalize_company_name,
         test_name_matches,

@@ -158,6 +158,29 @@ FAX_HINT_RE = re.compile(r"(?:FAX|Fax|fax|ＦＡＸ|ファックス|ファクス
 TEL_HINT_RE = re.compile(r"(?:TEL|Tel|tel|ＴＥＬ|電話|お電話|代表)[^0-9]{0,8}$")
 
 
+def normalize_phone(raw: str) -> str:
+    """架電できる形の国内番号だけを返す（それ以外は空文字）。
+
+    このカラムはそのままTwilioの発信先になる。「お問い合わせください」や
+    括弧が片方だけ残った "011)222-3333" のような値を通すと、実際に
+    かけて初めて気づくことになるので、ここで確実に落とす。
+    """
+    s = (raw or "").strip()
+    if not s:
+        return ""
+    digits = re.sub(r"\D", "", s)
+    if s.startswith("+81") or digits.startswith("81") and len(digits) >= 11 and s.startswith("+"):
+        digits = "0" + digits[2:]  # +81-3-1234-5678 → 0312345678
+    if not (10 <= len(digits) <= 11):
+        return ""
+    if not digits.startswith("0"):
+        return ""
+    # 元の表記が「数字とハイフンだけ」なら見やすいのでそのまま活かす
+    if re.fullmatch(r"[0-9\-]+", s) and re.sub(r"\D", "", s) == digits:
+        return s
+    return digits
+
+
 def _extract_phone(text: str) -> str:
     """本文から代表電話番号を拾う。
 
@@ -167,17 +190,16 @@ def _extract_phone(text: str) -> str:
     """
     fallback = ""
     for m in PHONE_RE.finditer(text):
-        raw = m.group(0)
-        digits = re.sub(r"\D", "", raw)
-        if not (10 <= len(digits) <= 11):
+        phone = normalize_phone(m.group(0))
+        if not phone:
             continue
         before = text[max(0, m.start() - 24): m.start()]
         if FAX_HINT_RE.search(before):
             continue  # FAX番号は架電先ではない
         if TEL_HINT_RE.search(before):
-            return raw.strip()
+            return phone
         if not fallback:
-            fallback = raw.strip()
+            fallback = phone
     return fallback
 
 
@@ -211,12 +233,20 @@ def _extract_employees(text: str):
 
 
 def _extract_phone_from_html(html_text: str, text: str) -> str:
-    """tel:リンクを最優先で、無ければ本文テキストから電話番号を拾う。"""
-    m = TEL_LINK_RE.search(html_text)
-    if m:
-        digits = re.sub(r"\D", "", m.group(1))
-        if 10 <= len(digits) <= 11:
-            return m.group(1).strip()
+    """tel:リンクを最優先で、無ければ本文テキストから電話番号を拾う。
+
+    ただし「FAX: <a href="tel:...">」のようにFAX番号がtel:リンクになっている
+    ページもあるため、本文と同じFAX判定をここでも通す（通さないと、本文側の
+    FAX除外をすり抜けてFAX番号が架電リストに載る）。
+    """
+    for m in TEL_LINK_RE.finditer(html_text):
+        phone = normalize_phone(m.group(1))
+        if not phone:
+            continue
+        before = _clean_text(html_text[max(0, m.start() - 120): m.start()])
+        if FAX_HINT_RE.search(before):
+            continue
+        return phone
     return _extract_phone(text)
 
 
@@ -651,7 +681,9 @@ class AIExtractor:
         idx = data.get("best_index", -1)
         if idx is None or idx < 0 or idx >= len(cands):
             return None
-        return {"url": cands[idx][0], "phone": (data.get("phone_number") or "").strip()}
+        # AIの返り値はそのまま架電先になるので、番号として成立しない文字列
+        #（「お問い合わせください」等）はここで落とす
+        return {"url": cands[idx][0], "phone": normalize_phone(data.get("phone_number") or "")}
 
 
 # ---------------------------------------------------------------------------
@@ -902,7 +934,11 @@ class WebFinder:
                     comp.company_url = result["url"]
                 if not comp.phone_number and result.get("phone"):
                     comp.phone_number = result["phone"]
-                comp.match_reason = comp.match_reason or "AIでHP・電話番号を確認"
+                # 「AIが判断した行」を必ず見分けられるようにする。
+                # ここを `or` にすると、母集団側が付けた理由（ローカルCSV一致）が
+                # 残ってしまい、1000行のどれがAI由来か区別できなくなる。
+                if result.get("url") or result.get("phone"):
+                    comp.match_reason = "AIでHP・電話番号を確認"
 
     @staticmethod
     def _passes(c: Company, criteria: SearchCriteria, include_unknown_employee: bool, strict_capital: bool) -> bool:

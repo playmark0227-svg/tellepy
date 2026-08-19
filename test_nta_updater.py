@@ -168,6 +168,26 @@ def test_prefecture_config():
     finally:
         os.environ.pop("NTA_PREFECTURES", None)
     assert nta_updater.configured_prefectures() == ["東京都", "神奈川県", "千葉県", "埼玉県"]
+    # 「京都」が「京」まで削られて解決できなかった不具合の再発防止
+    os.environ["NTA_PREFECTURES"] = "京都"
+    try:
+        assert nta_updater.configured_prefectures() == ["京都府"], \
+            nta_updater.configured_prefectures()
+    finally:
+        os.environ.pop("NTA_PREFECTURES", None)
+    # 「一都三県」のようなまとめ言葉も使える
+    os.environ["NTA_PREFECTURES"] = "一都三県"
+    try:
+        assert nta_updater.configured_prefectures() == ["東京都", "神奈川県", "千葉県", "埼玉県"]
+    finally:
+        os.environ.pop("NTA_PREFECTURES", None)
+    # 読めない指定は握りつぶさず、画面から見えるようにする
+    os.environ["NTA_PREFECTURES"] = "大阪市,東京都"
+    try:
+        assert nta_updater.configured_prefectures() == ["東京都"]
+        assert status()["unknown_prefectures"] == ["大阪市"], status()["unknown_prefectures"]
+    finally:
+        os.environ.pop("NTA_PREFECTURES", None)
     os.environ["NTA_AUTO_UPDATE"] = "0"
     try:
         assert nta_updater.auto_update_enabled() is False
