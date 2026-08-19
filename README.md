@@ -134,7 +134,23 @@ AIに使うトークンの上限を決められます。**上限に達した時�
   実行前に見積り分を確保します。**設定した上限を超えて課金されることはありません**
 - 結果画面に「AI確認(有料)／AIトークン／AI実費(概算)」が出るので、実際にいくら使ったか毎回わかります
 
-ブラウザ版（github.io）でも同じ上限が使えます（モデル選択＋上限トークン欄）。
+ブラウザ版（github.io）でも同じ上限が使えます。押す前に金額が出て、上限に達したら自動で止まります。
+
+#### 内蔵データ（開いた瞬間に使える状態にする）
+
+ブラウザ版は `docs/seed/` に置いた実データを起動時に見つけて、利用者に
+zipのダウンロードも解凍もさせずにリストを作らせます。中身の作り方:
+
+```bash
+python scripts/build_seed.py                       # 国税庁から取得して作る（既定: 一都三県の工務店・不動産・建設・リフォーム）
+python scripts/build_seed.py --pref 関西 --industry 飲食店
+python scripts/build_seed.py --from-zip 13_tokyo_all.zip   # ダウンロード済みのzipから作る（ネットに出ない）
+```
+
+`.github/workflows/build-seed.yml` が毎月これを回して `docs/seed/` を更新します
+（Actions タブから手動でも実行できます）。**seed が無い状態でも動きます** —
+その場合は画面が「内蔵データはまだ入っていません」と正直に名乗り、
+国税庁のzipを**解凍せずそのまま**受け取ります。
 
 **1000件リストあたりの目安コスト**（Haiku 4.5 = 入力 $1 / 出力 $5 per 1M tokens、1USD≒155円）:
 
@@ -392,5 +408,6 @@ python test_corp_importer.py  # 国税庁 全件CSVの変換
 python test_nta_updater.py    # 自動ダウンロード・更新状態の記録
 python test_api_auth.py       # 管理APIの合言葉認証（Twilioの経路は開いたまま）
 
-node test_docs_list.mjs       # ブラウザ版(docs/list.html)のロジック（Playwright・任意）
+node test_docs_list.mjs       # ブラウザ版のロジック（文字コード・CSV崩れ・絞り込み・並び）
+node test_docs_list_ui.mjs    # ブラウザ版の画面の約束（言っていることとやっていることが合うか）
 ```

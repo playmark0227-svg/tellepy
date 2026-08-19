@@ -1,0 +1,69 @@
+name: 内蔵データを更新
+
+# ブラウザ版（GitHub Pages）が「開いた瞬間に使える」状態を保つための仕組み。
+# 国税庁 法人番号データは月次更新なので、毎月1回取り直して docs/seed/ に置く。
+# 手動でも回せる（Actions タブ → このワークフロー → Run workflow）。
+
+on:
+  schedule:
+    - cron: "0 20 5 * *"   # 毎月6日 5:00 JST（月次データの公開後）
+  workflow_dispatch:
+    inputs:
+      pref:
+        description: "対象の都道府県（まとめ言葉も可: 一都三県 / 関西 など）"
+        default: "一都三県"
+      industry:
+        description: "対象の業種（カンマ区切り）"
+        default: "工務店,不動産,建設,リフォーム"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-seed
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 依存パッケージ
+        run: pip install -q -r requirements-list.txt
+
+      - name: 内蔵データを作る
+        run: |
+          python scripts/build_seed.py \
+            --pref "${{ inputs.pref || '一都三県' }}" \
+            --industry "${{ inputs.industry || '工務店,不動産,建設,リフォーム' }}"
+
+      - name: 大きすぎないか確認
+        run: |
+          # GitHubは100MB/ファイルで弾く。手前で止めて原因を分かるようにする。
+          big=$(find docs/seed -type f -size +90M -print)
+          if [ -n "$big" ]; then
+            echo "::error::90MBを超えるファイルがあります: $big"
+            echo "業種か地域を絞ってください（scripts/build_seed.py の --industry / --pref）"
+            exit 1
+          fi
+          ls -lh docs/seed
+
+      - name: 差分があればコミット
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/seed
+          if git diff --cached --quiet; then
+            echo "更新はありませんでした（既に最新）"
+            exit 0
+          fi
+          total=$(python -c "import json;print(f\"{json.load(open('docs/seed/manifest.json'))['companies']:,}\")")
+          ver=$(python -c "import json;print(json.load(open('docs/seed/manifest.json'))['version'])")
+          git commit -m "内蔵データを更新（国税庁 ${ver}版 / ${total}社）"
+          git push

@@ -6,18 +6,18 @@
   <meta name="theme-color" content="#F3F5F9" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0E1420" media="(prefers-color-scheme: dark)">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%232D54D8'/%3E%3Cpath d='M4 13c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2' stroke='white' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3Cpath d='M4 17.5c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2' stroke='%237FE0D5' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
-  <title>telepy リスト作成 — 架電リストを、この端末だけで</title>
+  <title>telepy — 架電リストをつくる担当</title>
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="telepy">
   <meta property="og:url" content="https://playmark0227-svg.github.io/tellepy/list.html">
-  <meta property="og:title" content="telepy リスト作成 — 架電リストを、この端末だけで">
-  <meta property="og:description" content="依頼文を貼るだけ。国税庁の全件データ（無料）から条件に合う会社を集め、電話番号までAIで補完。すべてPC内で処理します。">
+  <meta property="og:title" content="telepy — 架電リストをつくる担当">
+  <meta property="og:description" content="お客様からの依頼文を貼るだけ。条件に合う日本企業をこの端末の中で探します。電話番号だけは、AIが1社ずつ調べます。">
   <meta property="og:image" content="https://playmark0227-svg.github.io/tellepy/ogp.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="telepy リスト作成">
-  <meta name="twitter:description" content="国税庁の全件データ（無料）＋AI補完で、架電リストを数クリックで。PC内処理・アップロードなし。">
+  <meta name="twitter:title" content="telepy — 架電リストをつくる担当">
+  <meta name="twitter:description" content="依頼文を貼れば、条件に合う日本企業がこの端末の中で見つかります。電話番号だけは、AIが1社ずつ調べます。">
   <meta name="twitter:image" content="https://playmark0227-svg.github.io/tellepy/ogp.png">
   <script>
     /* テーマ初期化（描画前に確定させてチラつきを防ぐ） */
@@ -36,6 +36,7 @@
   <style>
     :root {
       --font: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", "Yu Gothic", Meiryo, sans-serif;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Hiragino Sans", monospace;
       --bg: #F3F5F9; --surface: #FFFFFF; --surface2: #EDF0F6;
       --primary: #2D54D8; --primary-hover: #2143BE; --on-primary: #FFFFFF;
       --accent: #0E9A8C; --accent-strong: #0B7C71;
@@ -44,6 +45,7 @@
       --primary-soft: color-mix(in srgb, var(--primary) 8%, var(--surface));
       --accent-soft: color-mix(in srgb, var(--accent) 12%, var(--surface));
       --warn-soft: color-mix(in srgb, var(--warning) 14%, var(--surface));
+      --danger-soft: color-mix(in srgb, var(--danger) 10%, var(--surface));
       --ring: 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent);
       --sh-sm: 0 1px 2px rgba(20,28,48,.06);
       --sh-md: 0 4px 16px -4px rgba(20,28,48,.10);
@@ -63,6 +65,7 @@
       --primary-soft: color-mix(in srgb, var(--primary) 16%, var(--surface));
       --accent-soft: color-mix(in srgb, var(--accent) 16%, var(--surface));
       --warn-soft: color-mix(in srgb, var(--warning) 18%, var(--surface));
+      --danger-soft: color-mix(in srgb, var(--danger) 16%, var(--surface));
       --sh-sm: 0 1px 2px rgba(0,0,0,.4);
       --sh-md: 0 6px 20px -6px rgba(0,0,0,.5);
       --sh-lg: 0 16px 48px -14px rgba(0,0,0,.6);
@@ -71,542 +74,861 @@
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html { -webkit-text-size-adjust: 100%; }
+    html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
     body {
-      font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.7;
+      font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.8;
       font-feature-settings: "palt" 1; letter-spacing: .01em; -webkit-font-smoothing: antialiased;
       min-height: 100vh; transition: background .22s var(--ease), color .22s var(--ease);
     }
     a { color: var(--primary); text-underline-offset: 2px; }
     .hidden { display: none !important; }
+    .nums { font-variant-numeric: tabular-nums; }
     ::selection { background: color-mix(in srgb, var(--primary) 24%, transparent); }
     ::-webkit-scrollbar { width: 10px; height: 10px; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; border: 2px solid var(--bg); }
 
-    /* ---------- Shell & header ---------- */
-    .shell { max-width: 1080px; margin: 0 auto; padding: 20px 20px 96px; }
-    .app-header {
+    /* ---------- Header ---------- */
+    .topbar { position: sticky; top: 0; z-index: 40; background: var(--bg); }
+    .topbar-in {
+      max-width: 1240px; margin: 0 auto; height: 56px; padding: 0 20px;
       display: flex; align-items: center; justify-content: space-between; gap: 12px;
-      padding: 10px 2px 18px; position: sticky; top: 0; z-index: 30; background: var(--bg);
     }
-    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
     .brand-mark {
-      width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0; display: grid; place-items: center;
+      width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0; display: grid; place-items: center;
       background: linear-gradient(135deg, var(--primary), var(--accent)); color: #fff; box-shadow: var(--sh-sm);
     }
-    .brand-mark svg { width: 24px; height: 24px; }
-    .brand-name { font-size: 18px; font-weight: 700; letter-spacing: .01em; }
-    .brand-name span { color: var(--muted); font-weight: 600; font-size: 14px; margin-left: 3px; }
-    .brand-sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
-    .header-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-    .trust-chip {
-      display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
-      color: var(--accent-strong); background: var(--accent-soft);
-      border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
-      padding: 6px 12px; border-radius: 999px; white-space: nowrap;
+    .brand-mark svg { width: 19px; height: 19px; }
+    .brand-name { font-size: 16px; font-weight: 700; letter-spacing: .01em; white-space: nowrap; }
+    .brand-name span { color: var(--muted); font-weight: 600; font-size: 13px; margin-left: 4px; }
+    .topbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .chip-btn {
+      display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 12.5px; font-weight: 600;
+      color: var(--muted); background: var(--surface); border: 1px solid var(--border);
+      padding: 6px 12px; border-radius: 999px; white-space: nowrap; cursor: pointer;
+      transition: color .12s var(--ease-quick), border-color .12s var(--ease-quick);
     }
-    .theme-toggle {
-      width: 40px; height: 40px; border-radius: 999px; border: 1px solid var(--border);
+    .chip-btn:hover { color: var(--text); border-color: var(--primary); }
+    .chip-btn:focus-visible { outline: none; box-shadow: var(--ring); }
+    .chip-btn.is-spending { color: var(--accent-strong); border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: var(--accent-soft); }
+    .icon-btn {
+      width: 34px; height: 34px; border-radius: 999px; border: 1px solid var(--border);
       background: var(--surface); color: var(--muted); display: grid; place-items: center;
       cursor: pointer; transition: color .12s var(--ease-quick), border-color .12s var(--ease-quick);
     }
-    .theme-toggle:hover { color: var(--text); border-color: var(--primary); }
-    .theme-toggle:focus-visible { outline: none; box-shadow: var(--ring); }
-    .theme-toggle svg { width: 18px; height: 18px; }
-    .theme-toggle .i-sun { display: none; }
-    :root[data-theme="dark"] .theme-toggle .i-moon { display: none; }
-    :root[data-theme="dark"] .theme-toggle .i-sun { display: block; }
-
-    /* ---------- Layout ---------- */
-    .layout { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 36px; align-items: start; }
-    .rail { position: sticky; top: 82px; }
-    .studio { max-width: 760px; min-width: 0; }
-
-    /* ---------- Stepper ---------- */
-    .stepper { position: relative; list-style: none; display: flex; flex-direction: column; gap: 22px; padding: 6px 0 6px 6px; }
-    .stepper-track, .stepper-fill { position: absolute; left: 20px; top: 15px; width: 2px; border-radius: 2px; }
-    .stepper-track { bottom: 15px; background: var(--border); }
-    .stepper-fill { height: calc(var(--step-progress, 0) * 100%); background: linear-gradient(var(--accent), var(--primary)); transition: height .4s var(--ease); }
-    .step-node { position: relative; z-index: 1; }
-    .step-node button { display: flex; align-items: center; gap: 12px; background: none; border: 0; cursor: pointer; font-family: inherit; color: var(--muted); padding: 0; width: 100%; text-align: left; }
-    .step-node button:focus-visible { outline: none; }
-    .step-node button:focus-visible .node-badge { box-shadow: var(--ring); }
-    .node-badge {
-      position: relative; width: 30px; height: 30px; border-radius: 999px; flex-shrink: 0;
-      display: grid; place-items: center; font-size: 13px; font-weight: 700;
-      background: var(--surface); border: 2px solid var(--border); color: var(--muted);
-      transition: background .22s var(--ease), border-color .22s var(--ease), color .22s var(--ease);
+    .icon-btn:hover { color: var(--text); border-color: var(--primary); }
+    .icon-btn:focus-visible { outline: none; box-shadow: var(--ring); }
+    .icon-btn svg { width: 17px; height: 17px; }
+    .icon-btn .i-sun { display: none; }
+    :root[data-theme="dark"] .icon-btn .i-moon { display: none; }
+    :root[data-theme="dark"] .icon-btn .i-sun { display: block; }
+    .privacy-bar {
+      border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+      background: var(--surface2); color: var(--muted); font-size: 12px; line-height: 1.6;
     }
-    .node-num { transition: opacity .2s; }
-    .node-check { position: absolute; width: 16px; height: 16px; opacity: 0; transition: opacity .2s; }
-    .node-check path { fill: none; stroke: #fff; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 20; stroke-dashoffset: 20; transition: stroke-dashoffset .3s var(--ease) .05s; }
-    .node-label { font-size: 13px; font-weight: 600; letter-spacing: .02em; transition: color .2s; }
-    .step-node.is-active .node-badge { border-color: var(--primary); color: var(--primary); }
-    .step-node.is-active .node-label { color: var(--text); }
-    .step-node.is-done .node-badge { background: var(--accent); border-color: var(--accent); }
-    .step-node.is-done .node-num { opacity: 0; }
-    .step-node.is-done .node-check { opacity: 1; }
-    .step-node.is-done .node-check path { stroke-dashoffset: 0; }
-    .step-node.is-done .node-label { color: var(--text); }
-    .step-node.is-upcoming { opacity: .55; }
-    .rail-trust { font-size: 11px; color: var(--muted); margin-top: 22px; padding-left: 4px; line-height: 1.7; max-width: 190px; }
-    @media (prefers-reduced-motion: no-preference) {
-      .step-node.is-active .node-badge { animation: nodePulse 2.4s ease-in-out infinite; }
-      @keyframes nodePulse {
-        0%, 100% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 14%, transparent); }
-        50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--primary) 5%, transparent); }
-      }
+    .privacy-bar div { max-width: 1240px; margin: 0 auto; padding: 6px 20px; display: flex; align-items: center; gap: 7px; }
+    .privacy-bar svg { width: 13px; height: 13px; flex-shrink: 0; color: var(--accent-strong); }
+
+    /* ---------- Stage: 1カラム → 結果が出たら2ペイン ---------- */
+    .stage {
+      max-width: 760px; margin: 0 auto; padding: 28px 20px 120px;
+      display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; align-items: stretch;
+      transition: max-width .34s var(--ease);
     }
+    /* 結果が出たら、左＝作業メモ／右＝リスト の2ペインに切り替える。
+       ページ全体をスクロールさせると、リストの見出し（架電できる件数と
+       ダウンロード）が画面外に出てしまうため、ペインごとに独立して送る。 */
+    .stage.has-board {
+      max-width: 1300px; grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr);
+      height: calc(100vh - 85px); overflow: hidden; padding-bottom: 20px;
+    }
+    .feed { min-width: 0; }
+    .stage.has-board .feed { overflow-y: auto; height: 100%; padding-right: 10px; }
+    .board-slot { min-width: 0; opacity: 0; transform: translateX(14px); pointer-events: none; }
+    .stage.has-board .board-slot {
+      opacity: 1; transform: none; pointer-events: auto; height: 100%;
+      transition: opacity .4s var(--ease) .1s, transform .4s var(--ease) .1s;
+    }
+    .board-inner { height: 100%; }
+
+    /* ---------- Feed: 担当者の作業メモ ---------- */
+    .msg { display: flex; gap: 12px; margin-bottom: 22px; }
+    .msg-avatar {
+      width: 30px; height: 30px; border-radius: 999px; flex-shrink: 0; margin-top: 2px;
+      background: linear-gradient(135deg, var(--primary), var(--accent)); color: #fff;
+      display: grid; place-items: center; box-shadow: var(--sh-sm);
+    }
+    .msg-avatar svg { width: 16px; height: 16px; }
+    .msg-avatar.is-quiet { background: var(--surface2); color: var(--muted); box-shadow: none; border: 1px solid var(--border); }
+    .msg-body { min-width: 0; flex: 1; font-size: 15px; }
+    .msg-body p + p { margin-top: 8px; }
+    .msg-body strong { font-weight: 700; }
+    .msg.is-user { justify-content: flex-end; }
+    .quote {
+      max-width: 560px; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 14px 14px 4px 14px; padding: 12px 16px; font-size: 14px;
+      color: var(--text); white-space: pre-wrap; word-break: break-word;
+    }
+    .quote-label { display: block; font-size: 11px; color: var(--muted); font-weight: 600; margin-bottom: 4px; }
+
+    /* 解析トレース */
+    .trace { margin: 10px 0 0; padding-left: 14px; border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); }
+    .trace li {
+      list-style: none; font-size: 13px; color: var(--muted); line-height: 1.9;
+      opacity: 0; transform: translateY(4px); animation: traceIn .32s var(--ease) forwards;
+    }
+    .trace li b { color: var(--text); font-weight: 600; }
+    @keyframes traceIn { to { opacity: 1; transform: none; } }
+    .caret { display: inline-block; width: 7px; height: 14px; vertical-align: -2px; margin-left: 3px;
+             background: var(--accent); animation: blink 1s steps(2) infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
 
     /* ---------- Cards ---------- */
-    .step-card {
+    .msg-card {
       background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
-      box-shadow: var(--sh-md), var(--card-inset); padding: 24px; margin-bottom: 20px;
+      padding: 20px; box-shadow: var(--sh-sm), var(--card-inset); margin-top: 12px;
     }
-    @media (max-width: 520px) { .step-card { padding: 20px; } }
-    .card-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 18px; }
-    .head-num { width: 30px; height: 30px; border-radius: 999px; flex-shrink: 0; display: grid; place-items: center; font-size: 13px; font-weight: 700; background: var(--primary-soft); color: var(--primary); }
-    .head-text { min-width: 0; flex: 1; }
-    .eyebrow { display: block; font-size: 11px; font-weight: 700; letter-spacing: .14em; color: var(--accent-strong); margin-bottom: 3px; }
-    .card-title { font-size: 18px; font-weight: 700; line-height: 1.5; }
-    .card-desc { font-size: 13px; color: var(--muted); margin-top: 6px; line-height: 1.8; }
-    .head-extra { margin-left: auto; padding-top: 2px; }
+    .msg-card + .msg-card { margin-top: 14px; }
+    .card-title { font-size: 15px; font-weight: 700; }
+    .card-head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+    .card-desc { font-size: 13px; color: var(--muted); margin-top: 2px; }
+    .reveal { animation: cardIn .38s var(--ease) both; }
+    @keyframes cardIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
-    /* ---------- Forms ---------- */
-    .field { margin-bottom: 16px; }
+    /* 出所バッジ */
+    .src-badge {
+      display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600;
+      padding: 3px 8px; border-radius: 999px; white-space: nowrap; cursor: help;
+      color: var(--muted); background: var(--surface2); border: 1px solid var(--border);
+    }
+    .src-badge.is-ai { color: var(--primary); background: var(--primary-soft); border-color: color-mix(in srgb, var(--primary) 30%, transparent); }
+    .src-note { font-size: 12px; color: var(--muted); margin-top: 10px; padding: 10px 12px;
+                background: var(--surface2); border-radius: var(--r-sm); line-height: 1.75; }
+
+    /* ---------- Fields ---------- */
+    .field { margin-bottom: 14px; }
     .field:last-child { margin-bottom: 0; }
-    .field-label { display: block; font-size: 13px; font-weight: 600; letter-spacing: .03em; color: var(--muted); margin-bottom: 7px; }
-    .field-help { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.7; }
-    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    @media (max-width: 520px) { .grid2 { grid-template-columns: 1fr; gap: 14px; } }
-    input[type=text], input[type=number], input[type=password], textarea, select {
-      width: 100%; font-family: inherit; font-size: 15px; color: var(--text); background: var(--surface2);
-      border: 1px solid var(--border); border-radius: var(--r-sm); padding: 11px 13px;
-      transition: border-color .16s var(--ease), box-shadow .16s var(--ease), background .2s;
+    .field-label { display: block; font-size: 12.5px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+    .field-help { font-size: 11.5px; color: var(--muted); margin-top: 5px; line-height: 1.7; }
+    input[type=text], input[type=number], input[type=password], select, textarea {
+      width: 100%; font: inherit; font-size: 14px; color: var(--text); background: var(--surface);
+      border: 1px solid var(--border); border-radius: var(--r-md); padding: 10px 13px;
+      transition: border-color .12s var(--ease-quick), box-shadow .12s var(--ease-quick);
     }
-    @media (max-width: 480px) { input[type=text], input[type=number], input[type=password], textarea, select { font-size: 16px; } }
-    textarea { min-height: 140px; line-height: 1.9; resize: vertical; }
-    input::placeholder, textarea::placeholder { color: var(--muted); opacity: .85; }
-    input:focus, textarea:focus, select:focus { outline: none; border-color: var(--primary); box-shadow: var(--ring); }
-    select {
-      appearance: none; -webkit-appearance: none; cursor: pointer; padding-right: 38px;
-      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238892a8' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
-      background-repeat: no-repeat; background-position: right 12px center; background-size: 16px;
-    }
-    .range { display: flex; align-items: center; gap: 10px; }
-    .range .dash { color: var(--muted); font-weight: 600; }
-
-    /* Switches */
-    .switches { display: flex; flex-direction: column; gap: 12px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
-    .switch { display: flex; align-items: center; gap: 12px; cursor: pointer; }
-    .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
-    .switch-track { position: relative; width: 42px; height: 24px; border-radius: 999px; background: var(--surface2); border: 1px solid var(--border); flex-shrink: 0; transition: background .18s var(--ease), border-color .18s var(--ease); }
-    .switch-track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 999px; background: #fff; box-shadow: var(--sh-sm); transition: transform .18s var(--ease); }
-    .switch input:checked + .switch-track { background: var(--accent); border-color: var(--accent); }
-    .switch input:checked + .switch-track::after { transform: translateX(18px); }
-    .switch input:focus-visible + .switch-track { box-shadow: var(--ring); }
-    .switch-text { font-size: 13.5px; line-height: 1.6; }
+    textarea { resize: vertical; min-height: 132px; line-height: 1.85; }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); box-shadow: var(--ring); }
+    select { cursor: pointer; appearance: none;
+      background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+      background-position: calc(100% - 17px) 50%, calc(100% - 12px) 50%;
+      background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; padding-right: 34px; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 620px) { .grid2 { grid-template-columns: 1fr; } }
+    .key-wrap { position: relative; }
+    .key-wrap input { padding-right: 42px; }
+    .key-eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px;
+               border: none; background: none; color: var(--muted); cursor: pointer; display: grid; place-items: center; border-radius: 6px; }
+    .key-eye:hover { color: var(--text); }
+    .key-eye svg { width: 16px; height: 16px; }
+    details.adv { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px; }
+    details.adv > summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--muted); list-style: none; }
+    details.adv > summary::-webkit-details-marker { display: none; }
+    details.adv > summary::before { content: "▸ "; display: inline-block; transition: transform .15s var(--ease-quick); }
+    details.adv[open] > summary::before { content: "▾ "; }
+    details.adv > div { margin-top: 12px; }
+    .switch-row { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; color: var(--muted); margin-bottom: 9px; }
+    .switch-row input { width: 16px; height: 16px; margin-top: 3px; accent-color: var(--primary); flex-shrink: 0; cursor: pointer; }
+    .switch-row label { cursor: pointer; line-height: 1.65; }
 
     /* ---------- Buttons ---------- */
     .btn {
-      display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-family: inherit;
-      font-size: 15px; font-weight: 600; line-height: 1; border: 1px solid transparent; border-radius: var(--r-md);
-      padding: 0 18px; height: 44px; cursor: pointer;
-      transition: transform .12s var(--ease-quick), background .12s, box-shadow .12s, border-color .12s, color .12s;
-      white-space: nowrap;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      font: inherit; font-size: 14px; font-weight: 600; line-height: 1;
+      padding: 11px 18px; border-radius: var(--r-md); border: 1px solid transparent;
+      cursor: pointer; white-space: nowrap; text-decoration: none;
+      transition: background .14s var(--ease-quick), border-color .14s var(--ease-quick), color .14s var(--ease-quick), transform .1s var(--ease-quick);
     }
-    .btn svg { width: 17px; height: 17px; }
+    .btn:active { transform: translateY(1px); }
     .btn:focus-visible { outline: none; box-shadow: var(--ring); }
-    .btn:hover { transform: translateY(-1px); }
-    .btn:active { transform: translateY(0) scale(.985); }
-    .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
+    .btn svg { width: 16px; height: 16px; flex-shrink: 0; }
     .btn-primary { background: var(--primary); color: var(--on-primary); box-shadow: var(--sh-sm); }
     .btn-primary:hover { background: var(--primary-hover); }
-    .btn-ghost { background: transparent; color: var(--text); border-color: var(--border); }
-    .btn-ghost:hover { background: var(--surface2); }
-    .btn-success { background: linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--accent) 60%, var(--primary))); color: #fff; box-shadow: var(--sh-md); }
-    .btn-danger-ghost { background: transparent; color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
-    .btn-danger-ghost:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); }
-    .btn-sm { height: 36px; font-size: 13.5px; padding: 0 14px; border-radius: var(--r-sm); }
-    .btn-block { display: flex; width: 100%; }
-    .btn-cta { height: 52px; font-size: 16px; font-weight: 700; margin-top: 4px; }
-    .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+    .btn-go { background: var(--accent-strong); color: #fff; box-shadow: var(--sh-sm); }
+    .btn-go:hover { background: var(--accent); }
+    .btn-ghost { background: var(--surface); color: var(--text); border-color: var(--border); }
+    .btn-ghost:hover { border-color: var(--primary); color: var(--primary); }
+    .btn-quiet { background: none; color: var(--muted); border-color: transparent; padding: 8px 10px; font-size: 13px; }
+    .btn-quiet:hover { color: var(--text); text-decoration: underline; }
+    .btn-danger { background: none; color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+    .btn-danger:hover { background: var(--danger-soft); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+    .btn-block { width: 100%; }
+    .btn-lg { font-size: 15px; padding: 14px 22px; }
+    .btn-sm { font-size: 13px; padding: 8px 13px; }
+    .btn-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 
-    /* ---------- Dropzone ---------- */
-    .dropzone { border: 2px dashed var(--border); border-radius: var(--r-md); background: var(--surface2); padding: 28px 20px; text-align: center; cursor: pointer; transition: border-color .16s var(--ease), background .16s var(--ease), transform .16s var(--ease); }
-    .dropzone:hover { border-color: color-mix(in srgb, var(--primary) 55%, var(--border)); }
-    .dropzone.dragover { border-style: solid; border-color: var(--primary); background: color-mix(in srgb, var(--primary) 6%, var(--surface2)); transform: scale(1.006); }
-    .dropzone.has-files { border-style: solid; border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--surface2)); }
-    .dz-icon { width: 52px; height: 52px; margin: 0 auto 8px; color: var(--muted); transition: transform .16s var(--ease), color .16s var(--ease); }
-    .dropzone.dragover .dz-icon { transform: translateY(-3px); color: var(--primary); }
-    .dropzone.has-files .dz-icon { color: var(--accent); }
-    .dz-main { font-size: 14.5px; font-weight: 600; color: var(--text); }
-    .dz-sub { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.8; }
+    /* チップ */
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      font: inherit; font-size: 13px; font-weight: 500; color: var(--text); background: var(--surface);
+      border: 1px solid var(--border); border-radius: 999px; padding: 7px 14px; cursor: pointer;
+      transition: border-color .12s var(--ease-quick), color .12s var(--ease-quick), background .12s var(--ease-quick);
+    }
+    .chip:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+    .chip:focus-visible { outline: none; box-shadow: var(--ring); }
+    .chip.is-primary { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+    .chip.is-primary:hover { background: var(--primary-hover); color: var(--on-primary); }
+    .kw-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 5px 6px 5px 11px; }
+    .kw-chip button { border: none; background: none; color: var(--muted); cursor: pointer; font: inherit;
+                      line-height: 1; padding: 3px 5px; border-radius: 999px; }
+    .kw-chip button:hover { color: var(--danger); background: var(--danger-soft); }
 
-    /* ---------- Progress ---------- */
-    .progress-track { height: 8px; border-radius: 999px; background: var(--surface2); overflow: hidden; position: relative; margin-bottom: 14px; }
-    .progress-track::after { content: ""; position: absolute; top: 0; left: -40%; width: 40%; height: 100%; border-radius: 999px; background: linear-gradient(90deg, transparent, var(--accent), var(--primary), transparent); animation: sheen 1.4s linear infinite; }
-    @keyframes sheen { to { left: 100%; } }
-    .progress-text { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    /* ---------- 事前診断 ---------- */
+    .preflight { margin-top: 12px; border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }
+    .preflight-head { font-size: 12.5px; font-weight: 700; color: var(--muted); padding: 9px 14px; background: var(--surface2); }
+    .pf-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; font-size: 13px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+    .pf-mark { font-weight: 700; flex-shrink: 0; width: 15px; }
+    .pf-ok .pf-mark { color: var(--success); }
+    .pf-ng .pf-mark { color: var(--warning); }
+    .pf-text { flex: 1; min-width: 200px; line-height: 1.7; }
+    .pf-text i { font-style: normal; color: var(--muted); }
+    .pf-row .btn { margin-left: auto; }
 
-    /* ---------- Result ---------- */
-    .result-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
-    .result-head .card-title { font-size: 18px; }
-    .result-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-    #lb-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
-    .stat-card { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 15px 16px 13px; }
-    .stat-card:first-child { background: var(--primary-soft); border-color: color-mix(in srgb, var(--primary) 22%, transparent); }
-    .stat-card .label { font-size: 12px; font-weight: 600; letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; }
-    .stat-card .value { font-size: 30px !important; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--text); }
-    .stat-card:first-child .value { color: var(--primary); }
-    .note { font-size: 12.5px; line-height: 1.8; color: var(--warning); background: var(--warn-soft); border: 1px solid color-mix(in srgb, var(--warning) 26%, transparent); padding: 11px 14px; border-radius: var(--r-md); margin-bottom: 14px; }
-    .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--r-md); }
-    table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-    thead th { position: sticky; top: 0; background: var(--surface2); text-align: left; font-size: 12.5px; font-weight: 600; color: var(--muted); padding: 11px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-    tbody td { padding: 11px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
-    tbody tr:last-child td { border-bottom: 0; }
-    tbody tr:hover td { background: color-mix(in srgb, var(--primary) 5%, transparent); }
-    tbody td:nth-child(1) { font-weight: 600; max-width: 240px; }
-    tbody td:nth-child(4), tbody td:nth-child(5) { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-    tbody td:nth-child(7) { font-variant-numeric: tabular-nums; white-space: nowrap; }
-    .table-foot { font-size: 12px; color: var(--muted); margin-top: 8px; }
-    .empty { text-align: center; padding: 40px 20px; color: var(--muted); }
-    .empty svg { width: 44px; height: 44px; margin: 0 auto 12px; opacity: .55; display: block; }
-    .empty h3 { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
-    .empty p { font-size: 13px; line-height: 1.8; }
+    /* ---------- データの棚 ---------- */
+    .tiles { display: flex; gap: 12px; flex-wrap: wrap; }
+    .tile {
+      flex: 1; min-width: 190px; text-align: left; font: inherit; cursor: pointer;
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 15px;
+      transition: border-color .14s var(--ease-quick), transform .14s var(--ease-quick), box-shadow .14s var(--ease-quick);
+    }
+    .tile:hover { border-color: var(--primary); transform: translateY(-2px); box-shadow: var(--sh-md); }
+    .tile:focus-visible { outline: none; box-shadow: var(--ring); }
+    .tile.is-on { border-color: var(--accent); background: var(--accent-soft); }
+    .tile-t { font-size: 14px; font-weight: 700; display: block; margin-bottom: 4px; }
+    .tile-d { font-size: 12px; color: var(--muted); line-height: 1.7; display: block; }
+    .dropzone {
+      border: 1.5px dashed var(--border); border-radius: var(--r-md); padding: 22px 16px; text-align: center;
+      cursor: pointer; background: var(--surface2); transition: border-color .16s var(--ease), background .16s var(--ease);
+    }
+    .dropzone:hover, .dropzone.dragover { border-color: var(--primary); background: var(--primary-soft); }
+    .dropzone.dragover { border-style: solid; }
+    .dz-icon { width: 26px; height: 26px; color: var(--muted); margin-bottom: 7px; }
+    .dz-main { font-size: 13.5px; font-weight: 600; }
+    .dz-sub { font-size: 11.5px; color: var(--muted); margin-top: 5px; line-height: 1.7; }
+    .receipt { margin-top: 12px; font-size: 12.5px; color: var(--muted); background: var(--surface2);
+               border-radius: var(--r-sm); padding: 10px 13px; line-height: 1.8; }
+    .receipt b { color: var(--text); }
 
-    /* ---------- AI card (optional / paid — visually quarantined) ---------- */
-    .ai-card { border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); background: linear-gradient(var(--accent-soft), var(--surface) 70px); }
-    .badge-paid { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700; color: var(--warning); background: var(--warn-soft); border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent); padding: 4px 10px; border-radius: 999px; }
-    .key-wrap { position: relative; }
-    .key-wrap input { padding-right: 44px; }
-    .key-eye { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); width: 32px; height: 32px; border: 0; background: none; color: var(--muted); cursor: pointer; display: grid; place-items: center; border-radius: var(--r-sm); }
-    .key-eye:hover { color: var(--text); }
-    .key-eye:focus-visible { outline: none; box-shadow: var(--ring); }
-    .key-eye svg { width: 18px; height: 18px; }
-    .ai-info { font-size: 12.5px; line-height: 1.8; color: var(--muted); background: var(--surface2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 11px 13px; margin-top: 14px; }
-    .ai-progress { margin-top: 12px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    /* ---------- 走査ライブ ---------- */
+    .progress-track { height: 5px; border-radius: 999px; background: var(--surface2); overflow: hidden; position: relative; }
+    .progress-track::after {
+      content: ""; position: absolute; inset: 0; border-radius: inherit;
+      background: linear-gradient(90deg, transparent, var(--primary), var(--accent), transparent);
+      background-size: 44% 100%; background-repeat: no-repeat; animation: sheen 1.15s linear infinite;
+    }
+    @keyframes sheen { from { background-position: -44% 0; } to { background-position: 144% 0; } }
+    .progress-text { font-size: 13.5px; color: var(--text); margin-top: 11px; font-variant-numeric: tabular-nums; }
+    .progress-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .pref-bars { margin-top: 14px; display: grid; gap: 6px; }
+    .pref-bar { display: grid; grid-template-columns: 64px 1fr 52px; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
+    .pref-bar i { font-style: normal; color: var(--text); }
+    .pref-bar span { height: 7px; border-radius: 999px; background: var(--primary-soft); display: block; position: relative; overflow: hidden; }
+    .pref-bar span::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--w, 0%);
+                            background: linear-gradient(90deg, var(--primary), var(--accent)); border-radius: inherit;
+                            transition: width .6s var(--ease); }
+    .pref-bar em { font-style: normal; text-align: right; font-variant-numeric: tabular-nums; }
 
-    .app-footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); line-height: 1.9; }
+    /* ---------- 納品ボード ---------- */
+    .board {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+      box-shadow: var(--sh-md), var(--card-inset); overflow: hidden;
+      display: flex; flex-direction: column; height: 100%;
+    }
+    .board-head { padding: 16px 18px; border-bottom: 1px solid var(--border); display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+    .ring { width: 54px; height: 54px; flex-shrink: 0; }
+    .ring circle { fill: none; stroke-width: 6; }
+    .ring .ring-bg { stroke: var(--surface2); }
+    .ring .ring-fg { stroke: var(--warning); stroke-linecap: round; transition: stroke-dashoffset .9s var(--ease), stroke .3s var(--ease); }
+    .ring.is-good .ring-fg { stroke: var(--accent); }
+    .ring text { font-size: 11px; font-weight: 700; fill: var(--text); }
+    .board-headline { flex: 1; min-width: 150px; }
+    .board-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+    .board-hero { font-size: 25px; font-weight: 700; line-height: 1.3; font-variant-numeric: tabular-nums; }
+    .board-hero small { font-size: 15px; font-weight: 600; color: var(--muted); }
+    .board-actions { display: flex; flex-direction: column; gap: 7px; }
+    .board-actions .btn { justify-content: flex-start; }
+    .sample-band {
+      background: var(--warn-soft); color: var(--warning); border-bottom: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
+      font-size: 12.5px; font-weight: 600; padding: 9px 18px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    }
+    .sample-band .btn { margin-left: auto; }
+    .board-scroll { overflow: auto; flex: 1; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th {
+      position: sticky; top: 0; z-index: 1; background: var(--surface2); color: var(--muted);
+      font-size: 11px; font-weight: 700; letter-spacing: .04em; text-align: left;
+      padding: 9px 12px; white-space: nowrap; border-bottom: 1px solid var(--border);
+    }
+    tbody td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; line-height: 1.6; }
+    tbody tr.row-main { cursor: pointer; transition: background .1s var(--ease-quick); }
+    tbody tr.row-main:hover { background: var(--surface2); }
+    .cell-name { font-weight: 600; min-width: 150px; }
+    .cell-addr { font-size: 11.5px; color: var(--muted); min-width: 140px; }
+    .cell-tel { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .tel-none { color: var(--muted); font-size: 11.5px; }
+    .tel-none::before { content: ""; display: inline-block; width: 30px; border-top: 1px dashed var(--border); vertical-align: 4px; margin-right: 6px; }
+    .why { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+           background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+    .why.is-ai { background: var(--primary-soft); color: var(--primary); border-color: color-mix(in srgb, var(--primary) 28%, transparent); }
+    .why.is-strong { background: var(--accent-soft); color: var(--accent-strong); border-color: color-mix(in srgb, var(--accent) 28%, transparent); }
+    .why.is-sample { background: var(--warn-soft); color: var(--warning); border-color: color-mix(in srgb, var(--warning) 30%, transparent); }
+    tr.row-why > td { padding: 0 12px; border-bottom: 1px solid var(--border); background: var(--surface2); }
+    tr.row-why .why-in { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .22s var(--ease); }
+    tr.row-why.is-open .why-in { grid-template-rows: 1fr; }
+    tr.row-why .why-in > div { overflow: hidden; }
+    tr.row-why ul { margin: 0; padding: 10px 0 12px 18px; font-size: 12px; color: var(--muted); line-height: 1.9; }
+    .board-foot { border-top: 1px solid var(--border); padding: 14px 18px; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; }
+    .stat-card { background: var(--surface2); border-radius: var(--r-sm); padding: 9px 11px; }
+    .stat-card .label { font-size: 10.5px; color: var(--muted); font-weight: 600; }
+    .stat-card .value { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.35; }
+    .quality { margin-top: 12px; display: grid; gap: 5px; }
+    .quality li { list-style: none; font-size: 12px; color: var(--muted); line-height: 1.75; padding-left: 17px; position: relative; }
+    .quality li::before { content: "•"; position: absolute; left: 4px; color: var(--border); }
+    .quality li.is-warn { color: var(--warning); }
+    .quality li.is-warn::before { content: "!"; font-weight: 700; color: var(--warning); }
+    .table-foot { font-size: 11.5px; color: var(--muted); margin-top: 10px; }
+    .recipe { margin-top: 12px; }
+    .recipe > summary { cursor: pointer; font-size: 12.5px; font-weight: 700; color: var(--primary); list-style: none; }
+    .recipe > summary::-webkit-details-marker { display: none; }
+    .recipe > summary::before { content: "▸ "; }
+    .recipe[open] > summary::before { content: "▾ "; }
+    .recipe ol { margin: 10px 0 0; padding-left: 20px; font-size: 12px; color: var(--muted); line-height: 1.95; }
+    .empty { text-align: center; padding: 44px 20px; }
+    .empty svg { width: 38px; height: 38px; color: var(--border); margin-bottom: 12px; }
+    .empty h3 { font-size: 15px; margin-bottom: 6px; }
+    .empty p { font-size: 13px; color: var(--muted); margin-bottom: 14px; line-height: 1.8; }
 
-    /* ---------- Toasts ---------- */
-    #toasts { position: fixed; right: 20px; bottom: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; max-width: min(360px, calc(100vw - 40px)); }
-    .toast { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-left: 3px solid var(--primary); border-radius: var(--r-md); box-shadow: var(--sh-lg); padding: 12px 16px; font-size: 14px; line-height: 1.6; transition: opacity .2s var(--ease), transform .2s var(--ease); animation: toastIn .24s var(--ease); }
-    .toast-success { border-left-color: var(--accent); }
-    .toast-error { border-left-color: var(--danger); }
-    .toast-info { border-left-color: var(--primary); }
-    @keyframes toastIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
-    @media (max-width: 520px) { #toasts { left: 20px; right: 20px; bottom: 16px; } }
+    /* ---------- 見積・作業ログ・領収書 ---------- */
+    .quote-grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 14px; align-items: start; }
+    @media (max-width: 680px) { .quote-grid { grid-template-columns: 1fr; } }
+    .price-box { background: var(--surface2); border-radius: var(--r-md); padding: 15px; }
+    .price-big { font-size: 30px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
+    .price-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .free-box { background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+                border-radius: var(--r-md); padding: 15px; font-size: 12.5px; line-height: 1.85; }
+    .free-box b { display: block; font-size: 13.5px; color: var(--accent-strong); margin-bottom: 5px; }
+    .free-box code { font-family: var(--mono); font-size: 12px; background: var(--surface); padding: 1px 5px; border-radius: 4px; }
+    .cost-bar { display: flex; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap; font-size: 12.5px; }
+    .cost-meter { flex: 1; min-width: 120px; height: 6px; border-radius: 999px; background: var(--surface2); overflow: hidden; }
+    .cost-meter i { display: block; height: 100%; width: 0; border-radius: inherit;
+                    background: linear-gradient(90deg, var(--accent), var(--primary)); transition: width .3s var(--ease); }
+    .cost-meter.is-hot i { background: var(--warning); }
+    .worklog { margin-top: 12px; background: var(--surface2); border-radius: var(--r-md); padding: 10px 13px; max-height: 210px; overflow: hidden; }
+    .worklog li { list-style: none; font-size: 12px; color: var(--muted); line-height: 1.85; font-variant-numeric: tabular-nums;
+                  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: traceIn .26s var(--ease) both; }
+    .worklog li b { color: var(--text); font-weight: 600; }
+    .worklog li.is-miss { color: var(--warning); }
+    .ai-status { font-size: 13px; margin-top: 12px; line-height: 1.8; }
 
-    /* ---------- Reveal & entrance motion ---------- */
-    .revealable { opacity: 0; transform: translateY(14px) scale(.985); }
-    .revealable.reveal { opacity: 1; transform: none; transition: opacity .44s var(--ease), transform .44s var(--ease); }
-    @keyframes cardIn { from { opacity: 0; transform: translateY(14px) scale(.985); } to { opacity: 1; transform: none; } }
-    #card-1 { animation: cardIn .5s var(--ease) both; }
-    @keyframes rowIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-    #lb-tbody tr { animation: rowIn .3s var(--ease) both; }
+    /* ---------- 料金シート ---------- */
+    .sheet { border: none; padding: 0; background: none; max-width: 640px; width: calc(100% - 32px); }
+    .sheet::backdrop { background: rgba(12,18,32,.55); backdrop-filter: blur(2px); }
+    .sheet-in { background: var(--surface); color: var(--text); border-radius: var(--r-lg); box-shadow: var(--sh-lg);
+                border: 1px solid var(--border); overflow: hidden; animation: cardIn .28s var(--ease) both; }
+    .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+                  padding: 16px 20px; border-bottom: 1px solid var(--border); }
+    .sheet-tabs { display: flex; gap: 6px; padding: 12px 20px 0; }
+    .sheet-tab { font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); background: none;
+                 border: none; border-bottom: 2px solid transparent; padding: 7px 10px; cursor: pointer; }
+    .sheet-tab.is-on { color: var(--primary); border-bottom-color: var(--primary); }
+    .sheet-body { padding: 16px 20px 22px; font-size: 13.5px; line-height: 1.9; max-height: 68vh; overflow: auto; }
+    .sheet-body h4 { font-size: 13px; margin: 16px 0 6px; }
+    .sheet-body h4:first-child { margin-top: 0; }
+    .sheet-body ul { padding-left: 20px; }
+    .sheet-body li { margin-bottom: 5px; }
+    .plan { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 6px; }
+    @media (max-width: 560px) { .plan { grid-template-columns: 1fr; } }
+    .plan > div { border: 1px solid var(--border); border-radius: var(--r-md); padding: 14px; }
+    .plan .tag { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+    .plan .free .tag { color: var(--accent-strong); }
+    .plan .paid .tag { color: var(--primary); }
+    .plan .amt { font-size: 21px; font-weight: 700; margin: 3px 0 6px; }
+    .plan p { font-size: 12.5px; color: var(--muted); line-height: 1.8; }
 
-    /* ---------- Responsive: rail -> top horizontal stepper ---------- */
-    @media (max-width: 900px) {
-      .layout { grid-template-columns: 1fr; gap: 0; }
-      .rail { position: sticky; top: 62px; z-index: 20; background: var(--bg); padding: 10px 0 16px; margin-bottom: 4px; }
-      .stepper { flex-direction: row; justify-content: space-between; gap: 4px; padding: 2px 6px; }
-      .stepper-track, .stepper-fill { left: 28px; right: 28px; top: 20px; bottom: auto; width: auto; height: 2px; }
-      .stepper-fill { height: 2px; width: calc(var(--step-progress, 0) * 100%); transition: width .4s var(--ease); }
-      .step-node button { flex-direction: column; gap: 6px; align-items: center; }
-      .node-label { font-size: 10.5px; }
-      .rail-trust { display: none; }
+    /* ---------- Toast ---------- */
+    #toasts { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 90;
+              display: flex; flex-direction: column; gap: 9px; align-items: center; width: min(560px, calc(100% - 32px)); }
+    .toast { background: var(--text); color: var(--bg); padding: 11px 18px; border-radius: 999px;
+             font-size: 13px; font-weight: 600; box-shadow: var(--sh-lg); animation: toastIn .28s var(--ease);
+             transition: opacity .3s var(--ease); max-width: 100%; text-align: center; }
+    .toast-error { background: var(--danger); color: #fff; }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+
+    .app-footer { text-align: center; font-size: 11.5px; color: var(--muted); padding: 34px 0 0; line-height: 1.9; }
+
+    /* ---------- 狭い画面: 作業メモ / リスト の2タブ ---------- */
+    .mobile-tabs { display: none; position: sticky; top: 56px; z-index: 20; background: var(--bg);
+                   padding: 8px 0; gap: 6px; border-bottom: 1px solid var(--border); }
+    .mobile-tabs button { flex: 1; font: inherit; font-size: 13px; font-weight: 600; padding: 8px;
+                          border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+                          border-radius: var(--r-sm); cursor: pointer; }
+    .mobile-tabs button.is-on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+    @media (max-width: 1000px) {
+      .stage.has-board { grid-template-columns: minmax(0, 1fr); }
+      .stage.has-board .mobile-tabs { display: flex; }
+      .stage.has-board.tab-feed .board-slot { display: none; }
+      .stage.has-board.tab-board .feed { display: none; }
+      .stage.has-board { height: auto; overflow: visible; padding-bottom: 120px; }
+      .stage.has-board .feed { overflow: visible; height: auto; padding-right: 0; }
+      .stage.has-board .board-slot { height: auto; }
+      .board-inner { height: auto; }
+      .board { height: auto; max-height: none; }
     }
 
-    /* ---------- Reduced motion ---------- */
     @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
-      .revealable { opacity: 1 !important; transform: none !important; }
-      .progress-track::after { animation: none; left: 0; width: 100%; opacity: .5; }
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+                               transition-duration: .01ms !important; }
+      .progress-track::after { animation: none; background: var(--primary); background-size: 100% 100%; }
+      .caret { display: none; }
     }
   </style>
 </head>
 <body>
-<div class="toast-container" id="toasts"></div>
 
-<div class="shell">
-  <header class="app-header">
+<header class="topbar">
+  <div class="topbar-in">
     <div class="brand">
-      <span class="brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13c2.5 0 2.5-2.5 5-2.5S14.5 13 17 13s2.5-2.5 5-2.5"/><path d="M2 18c2.5 0 2.5-2.5 5-2.5S14.5 18 17 18s2.5-2.5 5-2.5"/></svg>
+      <span class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M3 12c2.2 0 2.2-2.4 4.4-2.4S9.6 12 11.8 12s2.2-2.4 4.4-2.4S18.4 12 20.6 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M3 17c2.2 0 2.2-2.4 4.4-2.4S9.6 17 11.8 17s2.2-2.4 4.4-2.4S18.4 17 20.6 17" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" opacity=".65"/></svg>
       </span>
-      <div>
-        <div class="brand-name">telepy <span>リスト作成</span></div>
-        <div class="brand-sub">依頼文から、PC内だけで架電リストを作成</div>
-      </div>
+      <span class="brand-name">telepy<span>架電リスト</span></span>
     </div>
-    <div class="header-right">
-      <span class="trust-chip" title="CSV・依頼文はこのブラウザから外に出ません">🔒 データはこの端末内で処理</span>
-      <button class="theme-toggle" id="theme-toggle" aria-label="ライト／ダークを切り替え" onclick="TP.toggleTheme()">
+    <div class="topbar-right">
+      <button class="chip-btn" id="tp-cost-chip" onclick="TP.openSheet('price')" title="無料の範囲と、有料になる工程">今日の利用 ¥0</button>
+      <button class="icon-btn" id="theme-toggle" aria-label="ライト／ダークを切り替え" onclick="TP.toggleTheme()">
         <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>
         <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
       </button>
     </div>
-  </header>
+  </div>
+  <div class="privacy-bar">
+    <div>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+      この作業はこの端末の中だけで動いています。依頼文もCSVもどこにも送信しません。
+    </div>
+  </div>
+</header>
 
-  <div class="layout">
-    <nav class="rail" aria-label="進行状況">
-      <ol class="stepper" id="stepper" style="--step-progress:0">
-        <span class="stepper-track" aria-hidden="true"></span>
-        <span class="stepper-fill" aria-hidden="true"></span>
-        <li class="step-node is-active" data-step="1">
-          <button type="button"><span class="node-badge"><span class="node-num">1</span><svg class="node-check" viewBox="0 0 24 24"><path d="M5 13l4 4 10-11"/></svg></span><span class="node-label">依頼文</span></button>
-        </li>
-        <li class="step-node is-upcoming" data-step="2">
-          <button type="button"><span class="node-badge"><span class="node-num">2</span><svg class="node-check" viewBox="0 0 24 24"><path d="M5 13l4 4 10-11"/></svg></span><span class="node-label">条件</span></button>
-        </li>
-        <li class="step-node is-upcoming" data-step="3">
-          <button type="button"><span class="node-badge"><span class="node-num">3</span><svg class="node-check" viewBox="0 0 24 24"><path d="M5 13l4 4 10-11"/></svg></span><span class="node-label">CSV</span></button>
-        </li>
-        <li class="step-node is-upcoming" data-step="4">
-          <button type="button"><span class="node-badge"><span class="node-num">4</span><svg class="node-check" viewBox="0 0 24 24"><path d="M5 13l4 4 10-11"/></svg></span><span class="node-label">作成</span></button>
-        </li>
-        <li class="step-node is-upcoming" data-step="5">
-          <button type="button"><span class="node-badge"><span class="node-num">5</span><svg class="node-check" viewBox="0 0 24 24"><path d="M5 13l4 4 10-11"/></svg></span><span class="node-label">AI補完</span></button>
-        </li>
-      </ol>
-      <p class="rail-trust">ブラウザ内で完結。CSV・依頼文・APIキーはサーバーに送信されません。</p>
-    </nav>
+<div class="stage" id="stage">
 
-    <main class="studio">
+  <div class="mobile-tabs" id="tp-tabs">
+    <button type="button" class="is-on" onclick="TP.mobileTab('feed')">作業メモ</button>
+    <button type="button" onclick="TP.mobileTab('board')">リスト</button>
+  </div>
 
-      <!-- Step 1 -->
-      <section class="step-card" id="card-1">
-        <div class="card-head">
-          <span class="head-num">1</span>
-          <div class="head-text">
-            <span class="eyebrow">ステップ 01</span>
-            <div class="card-title">依頼文を入力</div>
-            <p class="card-desc">お客様からの依頼メッセージをそのまま貼るだけ。業種・地域・規模などの条件を自動で読み取ります。</p>
+  <main class="feed" id="feed">
+
+    <!-- 名乗り -->
+    <div class="msg" id="tp-intro">
+      <span class="msg-avatar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12c2.2 0 2.2-2.4 4.4-2.4S9.6 12 11.8 12s2.2-2.4 4.4-2.4S18.4 12 20.6 12"/></svg>
+      </span>
+      <div class="msg-body" id="tp-hello">
+        <p>架電リストをつくる担当です。お客様からの依頼文を、書き換えずにそのまま貼ってください。業種・エリア・規模・件数を読み取って、条件に合う会社を集めます。</p>
+
+        <!-- いま手元にあるデータ -->
+        <div class="msg-card reveal" id="tp-seed-card">
+          <div class="card-head-row" style="margin-bottom:8px;">
+            <div>
+              <div class="card-title">いま手元にあるデータ</div>
+              <p class="card-desc" id="tp-seed-desc">確認しています…</p>
+            </div>
+            <span class="src-badge" id="tp-seed-badge">確認中</span>
           </div>
+          <div class="btn-row" id="tp-seed-actions"></div>
         </div>
-        <div class="field">
-          <textarea id="lb-inquiry" rows="5" placeholder="例）工務店、不動産のリスト作成をお願いしたくお繋ぎいただきました！&#10;規模感は、従業員数10-20名、資本金1000万円以下、一都三県で1000件程お願いできますと幸いです。"></textarea>
-        </div>
-        <div class="btn-row">
-          <button class="btn btn-primary" onclick="LB.parse()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-            条件を読み取る
-          </button>
-          <button class="btn btn-ghost" onclick="LB.fillSample()">サンプル文を入れる</button>
-        </div>
-      </section>
 
-      <!-- Step 2 -->
-      <section class="step-card revealable hidden" id="lb-criteria-card">
-        <div class="card-head">
-          <span class="head-num">2</span>
-          <div class="head-text">
-            <span class="eyebrow">ステップ 02</span>
-            <div class="card-title">条件を確認・調整</div>
-            <p class="card-desc">読み取った条件です。必要に応じてそのまま直せます。</p>
-          </div>
-        </div>
-        <div class="grid2">
+        <!-- 依頼文 -->
+        <div class="msg-card reveal">
           <div class="field">
-            <label class="field-label" for="lb-industries">業種（カンマ区切り）</label>
-            <input type="text" id="lb-industries" placeholder="工務店, 不動産">
+            <label class="field-label" for="lb-inquiry">お客様からの依頼文</label>
+            <textarea id="lb-inquiry" rows="5" placeholder="例）工務店、不動産のリスト作成をお願いしたくお繋ぎいただきました！&#10;規模感は、従業員数10-20名、資本金1000万円以下、一都三県で1000件程お願いできますと幸いです。"></textarea>
           </div>
-          <div class="field">
-            <label class="field-label" for="lb-prefectures">都道府県（カンマ区切り）</label>
-            <input type="text" id="lb-prefectures" placeholder="東京都, 神奈川県">
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="LB.parse()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              この依頼文で条件を読み取る
+            </button>
+            <button class="btn btn-ghost" onclick="LB.fillSample()">例文を入れる</button>
+          </div>
+          <div class="chips" style="margin-top:14px;">
+            <button type="button" class="chip" onclick="TP.quick(this)">工務店・不動産／一都三県／1000件</button>
+            <button type="button" class="chip" onclick="TP.quick(this)">飲食店／大阪府／300件</button>
+            <button type="button" class="chip" onclick="TP.quick(this)">製造業／愛知県／500件</button>
           </div>
         </div>
-        <div class="field">
-          <label class="field-label" for="lb-keywords">社名検索キーワード（カンマ区切り）</label>
-          <input type="text" id="lb-keywords" placeholder="工務店, 建設, 住宅, 不動産, ホーム">
-          <p class="field-help">業種名が社名に含まれる会社を集めます。</p>
+        <p style="margin-top:12px;">
+          <button class="btn btn-quiet" onclick="LB.useSample()">同梱サンプル（架空の12社）で動作だけ見る</button>
+        </p>
+      </div>
+    </div>
+
+    <!-- 済んだ工程を畳んだ1行バー -->
+    <div class="msg hidden" id="tp-compact">
+      <span class="msg-avatar is-quiet">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4 10-11"/></svg>
+      </span>
+      <div class="msg-body">
+        <div class="msg-card" style="margin-top:0;">
+          <div class="card-head-row" style="margin-bottom:10px;">
+            <div>
+              <div class="card-title">この条件で作りました</div>
+              <p class="card-desc" id="tp-compact-desc"></p>
+            </div>
+            <span class="src-badge" id="tp-compact-src"></span>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-ghost btn-sm" onclick="TP.expand()">条件を変える</button>
+            <button class="btn btn-ghost btn-sm" onclick="TP.expand(true)">依頼文から やり直す</button>
+            <button class="btn btn-quiet" onclick="LB.build()">同じ条件でもう一度探す</button>
+          </div>
         </div>
-        <div class="grid2">
-          <div class="field">
-            <label class="field-label">従業員数</label>
-            <div class="range">
-              <input type="number" id="lb-emp-min" placeholder="10" aria-label="従業員数の下限">
-              <span class="dash">〜</span>
-              <input type="number" id="lb-emp-max" placeholder="20" aria-label="従業員数の上限">
+      </div>
+    </div>
+
+    <!-- 貼られた依頼文の控え -->
+    <div class="msg is-user hidden" id="tp-echo">
+      <div class="quote"><span class="quote-label">お客様からの依頼文</span><span id="tp-echo-text"></span></div>
+    </div>
+
+    <!-- 読み取り -->
+    <div class="msg hidden" id="tp-read">
+      <span class="msg-avatar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12c2.2 0 2.2-2.4 4.4-2.4S9.6 12 11.8 12s2.2-2.4 4.4-2.4S18.4 12 20.6 12"/></svg>
+      </span>
+      <div class="msg-body">
+        <p id="tp-read-lead">依頼文を読んでいます<span class="caret"></span></p>
+        <ul class="trace" id="tp-trace"></ul>
+        <p id="tp-read-done" class="hidden" style="margin-top:10px;">読み取りました。こういうことですね。違うところがあれば、下のカードを直接いじってください。</p>
+
+        <!-- 条件カード -->
+        <section class="msg-card hidden" id="lb-criteria-card">
+          <div class="card-head-row">
+            <div>
+              <div class="card-title">読み取った条件</div>
+              <p class="card-desc">そのまま直せます。直した内容がこのあとの検索に使われます。</p>
+            </div>
+            <span class="src-badge" id="tp-badge-parse" onclick="TP.openSheet('source')" title="クリックで説明">ルール解析</span>
+          </div>
+          <div class="grid2">
+            <div class="field">
+              <label class="field-label" for="lb-industries">業種</label>
+              <input type="text" id="lb-industries" placeholder="工務店, 不動産" oninput="TP.syncChips()">
+            </div>
+            <div class="field">
+              <label class="field-label" for="lb-prefectures">エリア（都道府県）</label>
+              <input type="text" id="lb-prefectures" placeholder="東京都, 神奈川県">
             </div>
           </div>
           <div class="field">
-            <label class="field-label" for="lb-cap-max">資本金・上限（円）</label>
-            <input type="number" id="lb-cap-max" placeholder="10000000">
+            <label class="field-label">社名に含まれる言葉（この語で会社を拾います）</label>
+            <div class="chips" id="tp-kw-chips"></div>
           </div>
-        </div>
-        <div class="field">
-          <label class="field-label" for="lb-count">目標件数</label>
-          <input type="number" id="lb-count" placeholder="1000">
-        </div>
-        <div class="switches">
-          <label class="switch">
-            <input type="checkbox" id="lb-unknown" checked>
-            <span class="switch-track"></span>
-            <span class="switch-text">従業員数が不明な会社もリストに含める（件数確保のため推奨）</span>
-          </label>
-          <label class="switch">
-            <input type="checkbox" id="lb-strict-cap" checked>
-            <span class="switch-track"></span>
-            <span class="switch-text">資本金の上限で厳密に絞る（外すと資本金未登録の会社も対象に）</span>
-          </label>
-        </div>
-      </section>
+          <div class="grid2">
+            <div class="field">
+              <label class="field-label" for="lb-emp-min">従業員数（下限）</label>
+              <input type="number" id="lb-emp-min" placeholder="10" min="0">
+            </div>
+            <div class="field">
+              <label class="field-label" for="lb-emp-max">従業員数（上限）</label>
+              <input type="number" id="lb-emp-max" placeholder="20" min="0">
+            </div>
+          </div>
+          <div class="grid2">
+            <div class="field">
+              <label class="field-label" for="lb-cap-max">資本金の上限（円）</label>
+              <input type="number" id="lb-cap-max" placeholder="10000000" min="0" step="1000000">
+            </div>
+            <div class="field">
+              <label class="field-label" for="lb-count">目標件数</label>
+              <input type="number" id="lb-count" value="100" min="1" max="100000">
+            </div>
+          </div>
+          <div class="btn-row" id="tp-ai-parse-row"></div>
+          <details class="adv">
+            <summary>詳細設定</summary>
+            <div>
+              <div class="switch-row">
+                <input type="checkbox" id="lb-unknown" checked>
+                <label for="lb-unknown">従業員数が分からない会社も集める（国税庁データには従業員数が無いため、通常はオンのままにしてください）</label>
+              </div>
+              <div class="switch-row">
+                <input type="checkbox" id="lb-strict-cap">
+                <label for="lb-strict-cap">資本金が分からない会社は外す（資本金の列があるCSVを使うときだけ有効です）</label>
+              </div>
+              <div class="grid2">
+                <div class="field" style="margin-bottom:0;">
+                  <label class="field-label" for="lb-encoding">文字コード</label>
+                  <select id="lb-encoding">
+                    <option value="auto">自動判別</option>
+                    <option value="utf-8">UTF-8</option>
+                    <option value="shift_jis">Shift_JIS</option>
+                  </select>
+                </div>
+                <div class="field" style="margin-bottom:0;">
+                  <label class="field-label" for="lb-keywords">社名キーワード（カンマ区切りで直接編集）</label>
+                  <input type="text" id="lb-keywords" placeholder="工務店, 建設, 住宅" oninput="TP.renderChips()">
+                </div>
+              </div>
+            </div>
+          </details>
+        </section>
 
-      <!-- Step 3 -->
-      <section class="step-card revealable hidden" id="lb-data-card">
-        <div class="card-head">
-          <span class="head-num">3</span>
-          <div class="head-text">
-            <span class="eyebrow">ステップ 03</span>
-            <div class="card-title">CSVを読み込む</div>
-            <p class="card-desc">母集団になるCSVを選びます。ファイルはPC内で処理され、どこにもアップロードされません。</p>
-          </div>
+        <!-- 事前診断 -->
+        <div class="preflight hidden" id="tp-preflight-wrap">
+          <div class="preflight-head">この名簿で、あなたの条件はこう扱われます</div>
+          <div id="tp-preflight"></div>
         </div>
-        <div class="dropzone" id="lb-drop"
-             ondragover="event.preventDefault();this.classList.add('dragover')"
-             ondragleave="this.classList.remove('dragover')"
-             ondrop="LB.handleDrop(event)"
-             onclick="document.getElementById('lb-file').click()">
-          <svg class="dz-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          <p class="dz-main" id="lb-file-label">CSVをドラッグ＆ドロップ、またはクリックして選択（複数OK・一都三県なら4県分まとめて）</p>
-          <p class="dz-sub">
-            国税庁 法人番号「全件データ」CSV（ヘッダ無し30列も自動判別・zipは解凍してから） / gBizINFO一括CSV / 手持ちのCSV<br>
-            ⚠ 国税庁サイトの「検索画面からのダウンロード」は上限10,000件です。件数が足りない場合は
-            <a href="https://www.houjin-bangou.nta.go.jp/download/zenken/" target="_blank" rel="noopener" onclick="event.stopPropagation()">全件データのダウンロード</a>から都道府県別zipを取得してください（東京都だけで約110万法人）。
-          </p>
-        </div>
-        <input type="file" id="lb-file" accept=".csv,.txt" multiple style="display:none" onchange="LB.handleFiles(this.files)">
-        <div class="grid2" style="margin-top:16px;">
-          <div class="field" style="margin-bottom:0;">
-            <label class="field-label" for="lb-encoding">文字コード</label>
-            <select id="lb-encoding">
-              <option value="auto">自動判別</option>
-              <option value="utf-8">UTF-8</option>
-              <option value="shift_jis">Shift_JIS</option>
-            </select>
-          </div>
-          <div class="field" style="margin-bottom:0;display:flex;align-items:flex-end;">
-            <button class="btn btn-ghost btn-block" onclick="LB.useSample()">同梱サンプルCSVで試す</button>
-          </div>
-        </div>
-        <button class="btn btn-success btn-block btn-cta" id="lb-run" onclick="LB.build()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-14 9V3z"/></svg>
-          リストを作成する
-        </button>
-      </section>
+        <p class="src-note hidden" id="tp-preflight-why"></p>
 
-      <!-- Progress -->
-      <section class="step-card revealable hidden" id="lb-progress-card">
-        <div class="card-head" style="margin-bottom:16px;">
-          <span class="head-num">4</span>
-          <div class="head-text">
-            <span class="eyebrow">ステップ 04</span>
-            <div class="card-title">作成中…</div>
-          </div>
+        <!-- 聞き返し -->
+        <div class="hidden" id="tp-ask" style="margin-top:16px;">
+          <p id="tp-ask-text"></p>
+          <div class="chips" id="tp-ask-chips" style="margin-top:10px;"></div>
         </div>
-        <div class="progress-track" aria-hidden="true"></div>
-        <p class="progress-text" id="lb-progress-text">CSVを読み込んでいます…</p>
-      </section>
 
-      <!-- Result -->
-      <section class="step-card revealable hidden" id="lb-result-card">
-        <div class="result-head">
-          <div class="head-text">
-            <span class="eyebrow">結果</span>
-            <div class="card-title" id="lb-result-title">作成結果</div>
-          </div>
-          <div class="result-actions">
-            <button class="btn btn-primary btn-sm" onclick="LB.download('detail')">詳細CSVをダウンロード</button>
-            <button class="btn btn-ghost btn-sm" onclick="LB.download('call')">架電用CSV</button>
+        <!-- 実行 -->
+        <div class="hidden" id="tp-go" style="margin-top:16px;">
+          <p id="tp-go-text"></p>
+          <div class="btn-row" style="margin-top:12px;">
+            <button class="btn btn-go btn-lg" id="lb-run" onclick="LB.build()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-14 9V3z"/></svg>
+              <span id="tp-go-label">このまま探す</span>
+            </button>
+            <button class="btn btn-quiet" onclick="TP.showDataCard(true)">別のデータを使う</button>
           </div>
         </div>
-        <div id="lb-stats"></div>
-        <div id="lb-note" class="note hidden"></div>
-        <div id="lb-table-wrap" class="table-wrap">
+      </div>
+    </div>
+
+    <!-- データの棚 -->
+    <div class="msg hidden" id="tp-data-msg">
+      <span class="msg-avatar is-quiet">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </span>
+      <div class="msg-body">
+        <p id="tp-data-lead">どのデータから探しますか。</p>
+        <section class="msg-card" id="lb-data-card">
+          <div class="tiles" style="margin-bottom:14px;">
+            <button type="button" class="tile" id="tp-tile-seed" onclick="CX.useSeed()">
+              <span class="tile-t">内蔵データで探す</span>
+              <span class="tile-d" id="tp-tile-seed-d">無料・いますぐ</span>
+            </button>
+            <button type="button" class="tile" onclick="document.getElementById('lb-file').click()">
+              <span class="tile-t">手元のファイルを渡す</span>
+              <span class="tile-d">CSV / zip のまま渡せます</span>
+            </button>
+            <button type="button" class="tile" onclick="TP.openSheet('howto')">
+              <span class="tile-t">取り方を教わる</span>
+              <span class="tile-d">国税庁の無料データ（30秒）</span>
+            </button>
+          </div>
+          <div class="dropzone" id="lb-drop"
+               ondragover="event.preventDefault();this.classList.add('dragover')"
+               ondragleave="this.classList.remove('dragover')"
+               ondrop="LB.handleDrop(event)"
+               onclick="document.getElementById('lb-file').click()">
+            <svg class="dz-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <p class="dz-main" id="lb-file-label">ここにファイルをドロップ、またはクリックして選択</p>
+            <p class="dz-sub">国税庁の全件データ（zipのままで大丈夫です）／gBizINFO一括CSV／手持ちのCSV。複数まとめて渡せます。</p>
+          </div>
+          <input type="file" id="lb-file" accept=".csv,.txt,.zip" multiple style="display:none" onchange="LB.handleFiles(this.files)">
+          <div class="receipt hidden" id="tp-receipt"></div>
+        </section>
+      </div>
+    </div>
+
+    <!-- 走査ライブ -->
+    <div class="msg hidden" id="lb-progress-card">
+      <span class="msg-avatar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </span>
+      <div class="msg-body">
+        <div class="msg-card" style="margin-top:0;">
+          <div class="progress-track" aria-hidden="true"></div>
+          <p class="progress-text" id="lb-progress-text">CSVを読み込んでいます...</p>
+          <p class="progress-sub">この端末のCPUで処理しています（外部通信 0回）</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 結果まとめ -->
+    <div class="msg hidden" id="tp-verdict">
+      <span class="msg-avatar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4 10-11"/></svg>
+      </span>
+      <div class="msg-body" id="tp-verdict-body"></div>
+    </div>
+
+    <!-- 電話番号を埋める -->
+    <section class="msg hidden" id="lb-ai-card">
+      <span class="msg-avatar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 01-2.2 2 19.8 19.8 0 01-8.6-3.1 19.5 19.5 0 01-6-6A19.8 19.8 0 012.1 4.2 2 2 0 014.1 2h3a2 2 0 012 1.7c.1 1 .4 1.9.7 2.8a2 2 0 01-.5 2.1L8.1 9.9a16 16 0 006 6l1.3-1.2a2 2 0 012.1-.5c.9.3 1.8.6 2.8.7a2 2 0 011.7 2z"/></svg>
+      </span>
+      <div class="msg-body">
+        <p>電話番号を調べます。1社ずつWebを検索して、公式サイトと代表電話を特定します。<strong>telepy で有料なのはこの工程だけです。</strong></p>
+        <div class="msg-card">
+          <div class="quote-grid">
+            <div class="price-box">
+              <div class="price-big" id="tp-quote-amt">≒ ¥0</div>
+              <div class="price-sub" id="tp-quote-sub">対象の会社がありません</div>
+              <div class="chips" style="margin-top:12px;" id="tp-quote-chips"></div>
+            </div>
+            <div class="free-box">
+              <b>お金をかけない方法もあります</b>
+              手元で <code>python main.py</code> を起動すると、無料のWeb検索で大半を埋めて、迷った会社だけAIに確認します（1,000件で ¥300〜1,500）。ブラウザだけでは外部サイトを直接読めない仕様（CORS）のため、無料の巡回はPC側が担当します。
+            </div>
+          </div>
+
+          <details class="adv" id="tp-ai-settings">
+            <summary>設定（モデル・上限・APIキー）</summary>
+            <div>
+              <div class="grid2">
+                <div class="field">
+                  <label class="field-label" for="lb-ai-key">Anthropic APIキー</label>
+                  <div class="key-wrap">
+                    <input type="password" id="lb-ai-key" placeholder="sk-ant-api03-..." oninput="TP.updateQuote()">
+                    <button type="button" class="key-eye" aria-label="キーの表示切り替え" onclick="TP.toggleKey()">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </button>
+                  </div>
+                  <p class="field-help">あなたのキーで、このブラウザから直接 Anthropic に問い合わせます。キーはこの端末にだけ保存され、telepy のサーバーには送られません（そもそもサーバーがありません）。請求先はあなたの Anthropic アカウントです。</p>
+                </div>
+                <div class="field">
+                  <label class="field-label" for="lb-ai-limit">調べる件数</label>
+                  <select id="lb-ai-limit" onchange="TP.updateQuote()">
+                    <option value="10">10社だけ試す</option>
+                    <option value="50">50社</option>
+                    <option value="100">100社</option>
+                    <option value="0">電話番号が無い全社</option>
+                  </select>
+                </div>
+              </div>
+              <div class="grid2">
+                <div class="field" style="margin-bottom:0;">
+                  <label class="field-label" for="lb-ai-model">精度（モデル）</label>
+                  <select id="lb-ai-model" onchange="TP.updateQuote()">
+                    <option value="claude-haiku-4-5">標準 · Claude Haiku 4.5（安い）</option>
+                    <option value="claude-sonnet-5">高精度 · Claude Sonnet 5（高い）</option>
+                  </select>
+                </div>
+                <div class="field" style="margin-bottom:0;">
+                  <label class="field-label" for="lb-ai-budget">上限トークン（0＝上限なし）</label>
+                  <input type="number" id="lb-ai-budget" value="1000000" min="0" step="100000" oninput="TP.updateBudgetHint()">
+                  <p class="field-help" id="lb-budget-hint">上限に達した時点で自動的に止まります。</p>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <div class="btn-row" style="margin-top:14px;">
+            <button class="btn btn-primary btn-lg" id="lb-ai-run" onclick="LB.aiEnrich()">電話番号を調べる</button>
+            <button class="btn btn-danger hidden" id="lb-ai-stop" onclick="LB.aiStop()">止める</button>
+            <span class="field-help hidden" id="tp-stop-note">止めた時点までの分だけの請求です。</span>
+          </div>
+
+          <div class="cost-bar hidden" id="tp-cost-bar">
+            <span class="nums" id="tp-cost-label"></span>
+            <span class="cost-meter" id="tp-cost-meter"><i></i></span>
+          </div>
+          <ul class="worklog hidden" id="tp-worklog"></ul>
+          <p class="ai-status hidden" id="lb-ai-progress"></p>
+        </div>
+      </div>
+    </section>
+
+    <footer class="app-footer">
+      依頼文・CSV・APIキーはサーバーに送信されません（電話番号を調べるときだけ、あなたのキーで直接 Anthropic に問い合わせます）。<br>
+      telepy — テレアポ代行AIシステム
+    </footer>
+  </main>
+
+  <!-- 納品ボード -->
+  <div class="board-slot">
+    <div class="board-inner">
+      <section class="board hidden" id="lb-result-card">
+        <div class="sample-band hidden" id="tp-sample-band">
+          <span>⚠ これは見本です。表示中の会社は実在しません。</span>
+          <button class="btn btn-ghost btn-sm" onclick="TP.backToTop()">本物のデータで作り直す</button>
+        </div>
+        <div class="board-head">
+          <svg class="ring" id="tp-ring" viewBox="0 0 40 40">
+            <circle class="ring-bg" cx="20" cy="20" r="16"></circle>
+            <circle class="ring-fg" cx="20" cy="20" r="16" transform="rotate(-90 20 20)"
+                    stroke-dasharray="100.5" stroke-dashoffset="100.5"></circle>
+            <text x="20" y="23" text-anchor="middle" id="tp-ring-pct">0%</text>
+          </svg>
+          <div class="board-headline">
+            <div class="board-eyebrow">架電可能率</div>
+            <div class="board-hero" id="lb-result-title">架電できる 0 <small>/ 0 社</small></div>
+          </div>
+          <div class="board-actions">
+            <button class="btn btn-primary btn-sm" id="tp-dl-call" onclick="LB.download('call')">架電用CSV</button>
+            <button class="btn btn-ghost btn-sm" id="tp-dl-detail" onclick="LB.download('detail')">詳細CSV</button>
+          </div>
+        </div>
+        <div class="board-scroll" id="lb-table-wrap">
           <table>
             <thead>
-              <tr><th>会社名</th><th>都道府県</th><th>所在地</th><th>資本金</th><th>従業員</th><th>業種</th><th>電話番号</th></tr>
+              <tr><th>会社名</th><th>所在地</th><th>電話番号</th><th>選定理由</th><th>規模</th></tr>
             </thead>
             <tbody id="lb-tbody"></tbody>
           </table>
-        </div>
-        <div id="lb-empty" class="empty hidden">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <h3>条件に合う会社が見つかりませんでした</h3>
-          <p>社名キーワードや都道府県をゆるめるか、文字コードの指定を見直してみてください。</p>
-          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('lb-criteria-card').scrollIntoView({behavior:'smooth',block:'center'})">条件を編集する</button>
-        </div>
-        <p class="table-foot">※プレビュー表示は先頭50件。全件はダウンロードCSVに含まれます。</p>
-      </section>
-
-      <!-- Step 5: AI enrich -->
-      <section class="step-card ai-card revealable hidden" id="lb-ai-card">
-        <div class="card-head">
-          <span class="head-num">5</span>
-          <div class="head-text">
-            <span class="eyebrow">ステップ 05</span>
-            <div class="card-title">HP・電話番号をAIで補完</div>
-            <p class="card-desc">電話番号が無い会社を、Claude Haiku＋Web検索で1社ずつ調べて公式サイト・電話番号を補います。</p>
+          <div id="lb-empty" class="empty hidden">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <h3>条件に合う会社が見つかりませんでした</h3>
+            <p>社名に含まれる言葉やエリアをゆるめるか、別のデータを渡してみてください。</p>
+            <button class="btn btn-ghost btn-sm" onclick="TP.backToCriteria()">条件を編集する</button>
           </div>
-          <div class="head-extra"><span class="badge-paid">任意 · 従量課金</span></div>
         </div>
-        <div class="grid2">
-          <div class="field">
-            <label class="field-label" for="lb-ai-key">Anthropic APIキー</label>
-            <div class="key-wrap">
-              <input type="password" id="lb-ai-key" placeholder="sk-ant-api03-...">
-              <button type="button" class="key-eye" aria-label="キーの表示切り替え" onclick="TP.toggleKey()">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
-              </button>
+        <div class="board-foot">
+          <div class="stats" id="lb-stats"></div>
+          <ul class="quality" id="lb-note"></ul>
+          <p class="table-foot" id="tp-table-foot"></p>
+          <details class="recipe" id="tp-recipe">
+            <summary>このリストの作り方</summary>
+            <ol id="tp-recipe-body"></ol>
+            <div class="btn-row" style="margin-top:10px;">
+              <button class="btn btn-ghost btn-sm" onclick="TP.copyRecipe()">内訳をコピー</button>
             </div>
-            <p class="field-help"><a href="https://platform.claude.com/" target="_blank" rel="noopener">platform.claude.com</a> で発行。キーはこの端末にのみ保存され、送信されません。</p>
-          </div>
-          <div class="field">
-            <label class="field-label" for="lb-ai-limit">補完する件数（電話番号が無い会社の先頭から）</label>
-            <select id="lb-ai-limit">
-              <option value="10">10件だけ試す</option>
-              <option value="50">50件</option>
-              <option value="100">100件</option>
-              <option value="0">電話番号が無い全件</option>
-            </select>
-          </div>
-        </div>
-        <div class="grid2">
-          <div class="field">
-            <label class="field-label" for="lb-ai-model">精度（モデル）</label>
-            <select id="lb-ai-model" onchange="TP.updateBudgetHint()">
-              <option value="claude-haiku-4-5">標準 · Haiku 4.5（最安 ≒ ¥3/社）</option>
-              <option value="claude-sonnet-5">高精度 · Sonnet 5（≒ ¥15〜40/社）</option>
-            </select>
-          </div>
-          <div class="field">
-            <label class="field-label" for="lb-ai-budget">上限トークン（0＝無制限）</label>
-            <input type="number" id="lb-ai-budget" value="1000000" min="0" step="100000" oninput="TP.updateBudgetHint()">
-            <p class="field-help" id="lb-budget-hint">上限に達した時点でAIを自動停止します。</p>
-          </div>
-        </div>
-        <div class="btn-row">
-          <button class="btn btn-primary" id="lb-ai-run" onclick="LB.aiEnrich()">AIで補完を開始</button>
-          <button class="btn btn-danger-ghost hidden" id="lb-ai-stop" onclick="LB.aiStop()">停止</button>
-        </div>
-        <div id="lb-ai-progress" class="ai-progress hidden"></div>
-        <div class="ai-info">
-          💡 <strong>完全無料〜数百円で済ませたい場合はローカル版が最強です。</strong>
-          手元で <code>python main.py</code> を起動すると、無料のWeb検索（DuckDuckGo）で大半を補完し、迷った会社だけAIで確認します（1000件で数百円程度）。
-          ブラウザ単体は外部サイトを直接巡回できない（CORS制約）ため、無料巡回はローカルのPythonが担当します。
+          </details>
         </div>
       </section>
-
-      <footer class="app-footer">
-        依頼文・CSV・APIキーはサーバーに送信されません（AI補完の実行時のみ、あなたのキーで直接 Anthropic に問い合わせます）。<br>
-        telepy — テレアポ代行AIシステム
-      </footer>
-
-    </main>
+    </div>
   </div>
 </div>
+
+<!-- 料金・出所・取り方 のシート -->
+<dialog class="sheet" id="tp-sheet">
+  <div class="sheet-in">
+    <div class="sheet-head">
+      <strong id="tp-sheet-title">料金</strong>
+      <button class="icon-btn" onclick="TP.closeSheet()" aria-label="閉じる">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="sheet-tabs" id="tp-sheet-tabs">
+      <button type="button" class="sheet-tab is-on" data-tab="price" onclick="TP.openSheet('price')">料金</button>
+      <button type="button" class="sheet-tab" data-tab="team" onclick="TP.openSheet('team')">チームに配る</button>
+      <button type="button" class="sheet-tab" data-tab="source" onclick="TP.openSheet('source')">出所の見かた</button>
+      <button type="button" class="sheet-tab" data-tab="howto" onclick="TP.openSheet('howto')">データの取り方</button>
+    </div>
+    <div class="sheet-body" id="tp-sheet-body"></div>
+  </div>
+</dialog>
+
+<div id="toasts"></div>
 
 <script>
 /* telepy リスト作成 - ブラウザ内 CSV ストリーミング検索（サーバー・API不要）
@@ -1211,9 +1533,19 @@ async function aiLookupCompany(apiKey, comp, model) {
   return { data: found, usage: usage };
 }
 
+
+/* ===========================================================================
+   LB — 画面から検索ロジックを呼ぶ係。
+   上の純ロジック（CSVパーサ・絞り込み・Anthropic呼び出し）には手を触れない。
+
+   ★AIと書いてよいのは Anthropic API を実際に叩く箇所だけ。
+     依頼文の読み取り（parseHeuristic）は辞書と正規表現なので「ルール解析」と呼ぶ。
+     この区別を崩す文言変更をしないこと。
+   =========================================================================== */
 var LB = {
   companies: [],
   _files: null,
+  _sampleRun: false,
   _aiAbort: false,
   _aiCalls: 0,
   _aiIn: 0,
@@ -1229,7 +1561,7 @@ var LB = {
   fillSample: function() {
     document.getElementById('lb-inquiry').value =
       '工務店、不動産のリスト作成をお願いしたくお繋ぎいただきました！\n' +
-      '規模感は、従業員数10-20名、資本金1000万円以下、東京と神奈川で1000件程お願いできますと幸いです。';
+      '規模感は、従業員数10-20名、資本金1000万円以下、一都三県で1000件程お願いできますと幸いです。';
   },
 
   parse: function() {
@@ -1244,8 +1576,7 @@ var LB = {
     document.getElementById('lb-cap-max').value = c.capital_max == null ? '' : c.capital_max;
     document.getElementById('lb-count').value = c.target_count || 100;
     document.getElementById('lb-criteria-card').classList.remove('hidden');
-    document.getElementById('lb-data-card').classList.remove('hidden');
-    toast('条件を読み取りました。CSVを選んでください');
+    TP.afterParse(c, text);
   },
 
   collectCriteria: function() {
@@ -1286,26 +1617,44 @@ var LB = {
     if (e.dataTransfer.files.length) this.handleFiles(e.dataTransfer.files);
   },
 
-  handleFiles: function(fileList) {
+  handleFiles: async function(fileList) {
     var files = Array.prototype.slice.call(fileList || []);
     if (!files.length) return;
-    // zipのまま入れられると数分走査した末に0件になるので、その場で気づけるようにする
+    var label = document.getElementById('lb-file-label');
+
+    // zipは解凍せずそのまま受け取る（数百MBのzipを解凍させないための工程）。
+    // 解けなかった場合だけ、従来どおり「解凍してください」と案内する。
     var zips = files.filter(function(f) { return /\.zip$/i.test(f.name); });
     if (zips.length) {
-      document.getElementById('lb-file-label').textContent =
-        '⚠ zipのままでは読み込めません（' + zips.map(function(f){return f.name;}).join(', ') + '）';
-      document.getElementById('lb-drop').classList.remove('has-files');
-      this._files = null;
-      toast('zipファイルは先に解凍して、中のCSVを選んでください', 'error');
-      return;
+      label.textContent = 'zipを開いています…（解凍は不要です）';
+      var opened = [], failed = [];
+      for (var i = 0; i < files.length; i++) {
+        if (!/\.zip$/i.test(files[i].name)) { opened.push(files[i]); continue; }
+        try {
+          var v = await CX.openZip(files[i]);
+          if (v) opened.push(v); else failed.push(files[i].name);
+        } catch (e) { failed.push(files[i].name); }
+      }
+      if (failed.length) {
+        label.textContent = '⚠ このzipは開けませんでした（' + failed.join(', ') +
+          '）。解凍して、中のCSVを渡してください。';
+        document.getElementById('lb-drop').classList.remove('has-files');
+        this._files = null;
+        toast('zipを開けませんでした。解凍して中のCSVを選んでください', 'error');
+        TP.showReceipt(null);
+        return;
+      }
+      files = opened;
     }
+
     this._files = files;
-    var totalMb = files.reduce(function(s, f) { return s + f.size; }, 0) / 1048576;
-    var label = files.length === 1
+    var totalMb = files.reduce(function(s, f) { return s + (f.size || 0); }, 0) / 1048576;
+    label.textContent = files.length === 1
       ? '選択中: ' + files[0].name + '（' + totalMb.toFixed(1) + 'MB）'
       : '選択中: ' + files.length + 'ファイル（合計' + totalMb.toFixed(1) + 'MB）: ' +
         files.map(function(f) { return f.name; }).join(', ');
-    document.getElementById('lb-file-label').textContent = label;
+    await TP.showReceipt(files);
+    TP.readyToRun();
   },
 
   useSample: async function() {
@@ -1313,9 +1662,13 @@ var LB = {
       var res = await fetch('sample_companies.csv');
       if (!res.ok) throw new Error('サンプルの取得に失敗');
       var text = await res.text();
-      this._files = [new File([text], 'sample_companies.csv', { type: 'text/csv' })];
-      document.getElementById('lb-file-label').textContent = '選択中: sample_companies.csv（同梱サンプル）';
-      toast('サンプルCSVを読み込みました');
+      var f = new File([text], 'sample_companies.csv', { type: 'text/csv' });
+      // ここで立てた印だけが「見本」の根拠。ファイルの中身ではなく出所に束ねる。
+      f._tpSample = true;
+      this._files = [f];
+      document.getElementById('lb-file-label').textContent = '選択中: sample_companies.csv（同梱サンプル・架空）';
+      toast('見本モードです。実在しない12社で動作だけ確認できます');
+      TP.enterSampleMode();
     } catch (e) {
       toast('サンプルの読み込みに失敗しました: ' + e.message, 'error');
     }
@@ -1326,7 +1679,14 @@ var LB = {
     if (criteria.name_keywords.length === 0 && criteria.industries.length === 0) {
       toast('業種または社名キーワードを指定してください', 'error'); return;
     }
-    if (!this._files || !this._files.length) { toast('検索するCSVを選んでください（または「同梱サンプルCSVで試す」）', 'error'); return; }
+    if (!this._files || !this._files.length) {
+      toast('先に、探すもとになるデータを選んでください', 'error');
+      TP.showDataCard(true);
+      return;
+    }
+    // 表示中の会社が実在するかどうかは、ここで確定させる。
+    // ファイル選択のたびに降ろすと、見本を選んだあとCSVを足しただけで印が消える。
+    this._sampleRun = this._files.every(function(f) { return !!f._tpSample; });
 
     var opts = {
       encoding: document.getElementById('lb-encoding').value,
@@ -1341,15 +1701,16 @@ var LB = {
 
     document.getElementById('lb-result-card').classList.add('hidden');
     document.getElementById('lb-progress-card').classList.remove('hidden');
-    document.getElementById('lb-progress-text').textContent = 'CSVを読み込んでいます...';
+    document.getElementById('lb-progress-text').textContent = 'データを読み込んでいます...';
     document.getElementById('lb-run').disabled = true;
+    TP.scrollTo('lb-progress-card');
 
     try {
       var out = await searchFiles(this._files, criteria, opts);
       this.companies = out.companies;
       document.getElementById('lb-progress-card').classList.add('hidden');
       if (out.unmatchedFiles.length) {
-        toast('列を認識できないCSVがあります: ' + out.unmatchedFiles.join(', ') + '（ヘッダ行や文字コードをご確認ください）', 'error');
+        toast('列を認識できないデータがあります: ' + out.unmatchedFiles.join(', ') + '（ヘッダ行や文字コードをご確認ください）', 'error');
       }
       this.renderResult(criteria, out);
     } catch (e) {
@@ -1363,61 +1724,120 @@ var LB = {
   renderResult: function(criteria, out) {
     this._lastCriteria = criteria;
     this._lastOut = out;
+    var n = this.companies.length;
+    var withPhone = this.companies.filter(function(c) { return c.phone_number; }).length;
+    var sample = this._sampleRun;
+
     document.getElementById('lb-result-card').classList.remove('hidden');
-    document.getElementById('lb-ai-card').classList.toggle('hidden', this.companies.length === 0);
-    document.getElementById('lb-result-title').textContent = '作成結果：' + this.companies.length + ' 社（PC内検索）';
+    document.getElementById('stage').classList.add('has-board');
+    document.getElementById('tp-sample-band').classList.toggle('hidden', !sample);
+
+    // 主役の数値は「架電できる社数」。取得件数を主役にすると、電話番号ゼロでも
+    // 満点に見えてしまい、営業の評価軸とずれる。
+    document.getElementById('lb-result-title').innerHTML =
+      '架電できる <span class="nums">' + withPhone.toLocaleString() + '</span> ' +
+      '<small>/ ' + n.toLocaleString() + ' 社</small>';
+    TP.setRing(n ? withPhone / n : 0);
+
+    var dlCall = document.getElementById('tp-dl-call');
+    var dlDetail = document.getElementById('tp-dl-detail');
+    if (sample) {
+      dlCall.disabled = true; dlDetail.disabled = true;
+      dlCall.className = dlDetail.className = 'btn btn-sm btn-ghost';
+      dlCall.textContent = '見本のため出力できません';
+      dlDetail.textContent = '見本のため出力できません';
+    } else {
+      dlDetail.disabled = n === 0;
+      dlDetail.textContent = '詳細CSV' + (n ? '（' + n.toLocaleString() + '件）' : '');
+      dlCall.disabled = withPhone === 0;
+      dlCall.className = 'btn btn-sm ' + (withPhone ? 'btn-primary' : 'btn-ghost');
+      dlDetail.className = 'btn btn-sm ' + (withPhone ? 'btn-ghost' : 'btn-primary');
+      dlCall.textContent = withPhone
+        ? '架電用CSV（電話番号がある ' + withPhone.toLocaleString() + ' 件）'
+        : '架電用CSV — まだ電話番号が0件です';
+    }
 
     var unknownEmp = this.companies.filter(function(c) { return c.employee_number == null; }).length;
     var statItems = [
-      ['取得件数', this.companies.length],
+      ['架電できる', withPhone.toLocaleString()],
+      ['取得件数', n.toLocaleString()],
       ['走査行数', out.scanned.toLocaleString()],
-      [out.truncated ? '該当（途中で打ち切り）' : '該当総数', out.total],
-      ['従業員数不明', unknownEmp]
+      [out.truncated ? '該当（打ち切り）' : '該当総数', out.total.toLocaleString()]
     ];
     if (this._aiCalls > 0) {
-      statItems.push(['AI確認(有料)', this._aiCalls]);
-      statItems.push(['AI実費(概算)', '¥' + (this._aiCostYen || 0).toLocaleString()]);
+      statItems.push(['AIの呼び出し', this._aiCalls.toLocaleString() + ' 回']);
+      statItems.push(['今回の実費', '¥' + (this._aiCostYen || 0).toLocaleString()]);
     }
     document.getElementById('lb-stats').innerHTML = statItems.map(function(pair) {
-      return '<div class="stat-card"><div class="label">' + pair[0] + '</div><div class="value" style="font-size:20px">' + pair[1] + '</div></div>';
+      return '<div class="stat-card"><div class="label">' + esc(pair[0]) + '</div>' +
+             '<div class="value">' + esc(pair[1]) + '</div></div>';
     }).join('');
 
-    var note = document.getElementById('lb-note');
+    // 品質チェックリスト（分かっていないことを製品側から先に言う）
     var notes = [];
-    if (this.companies.length === 0) notes.push('該当0件でした。社名キーワードや都道府県、文字コードの指定を見直してみてください。');
+    if (sample) notes.push(['warn', 'これは同梱の見本データです。表示中の会社も電話番号も実在しません。']);
+    if (n === 0) notes.push(['warn', '該当0件でした。社名に含まれる言葉やエリアをゆるめてみてください。']);
     if (!out.dataHasCapital && (criteria.capital_max != null || criteria.capital_min != null))
-      notes.push('資本金の列を持たないCSV（国税庁データは社名・所在地のみ）が含まれるため、その分は資本金の条件を適用していません。');
+      notes.push(['warn', '資本金の条件は適用していません。使ったデータに資本金の列が無いためです。']);
     if (out.truncated)
-      notes.push('目標件数に対して十分な候補（' + out.total.toLocaleString() + '件）が見つかった時点で走査を打ち切りました。実際に条件へ当てはまる会社はこれより多い可能性があります。もっと多く必要なら目標件数を増やしてください。');
-    if (unknownEmp > 0) notes.push('従業員数が不明な会社が含まれます（そのCSVに従業員数の列が無い/空の場合）。');
-    var hasPhone = this.companies.some(function(c) { return c.phone_number; });
-    if (!hasPhone && this.companies.length > 0) notes.push('このCSVには電話番号がありません。下の「⑤ HP・電話番号をAIで補完」で埋められます（ローカル版なら無料補完も可）。');
-    if (notes.length) { note.textContent = 'ℹ ' + notes.join(' '); note.classList.remove('hidden'); }
-    else note.classList.add('hidden');
-
-    var fmtYen = function(v) { return v == null ? '-' : '¥' + Number(v).toLocaleString(); };
-    document.getElementById('lb-tbody').innerHTML = this.companies.slice(0, 50).map(function(c) {
-      return '<tr>' +
-        '<td>' + esc(c.name || '-') + '</td>' +
-        '<td>' + esc(c.prefecture || '-') + '</td>' +
-        '<td style="font-size:12px">' + esc(c.location || '-') + '</td>' +
-        '<td>' + esc(fmtYen(c.capital_stock)) + '</td>' +
-        '<td>' + esc(c.employee_number == null ? '-' : c.employee_number) + '</td>' +
-        '<td style="font-size:12px">' + esc(c.industry || '-') + '</td>' +
-        '<td style="font-size:12px">' + esc(c.phone_number || '-') + '</td>' +
-      '</tr>';
+      notes.push(['warn', '候補が ' + out.total.toLocaleString() + '社 に達した時点で走査を打ち切りました。実際に条件へ当てはまる会社はこれより多い可能性があります。もっと必要なら目標件数を増やしてください。']);
+    if (unknownEmp > 0 && n > 0)
+      notes.push(['', '従業員数が分からない会社が ' + unknownEmp.toLocaleString() + '社 含まれます。使ったデータに従業員数の列が無いためです。']);
+    if (withPhone === 0 && n > 0 && !sample)
+      notes.push(['warn', 'この時点では1社も架電できません。国税庁のデータに電話番号が入っていないためです。下の「電話番号を調べる」で埋められます。']);
+    document.getElementById('lb-note').innerHTML = notes.map(function(p) {
+      return '<li class="' + (p[0] === 'warn' ? 'is-warn' : '') + '">' + esc(p[1]) + '</li>';
     }).join('');
-    if (TP.syncEmptyState) TP.syncEmptyState();  // 0件でも「見つかりませんでした」を出す
-    document.getElementById('lb-result-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    var PREVIEW = 200;
+    var rows = this.companies.slice(0, PREVIEW);
+    document.getElementById('lb-tbody').innerHTML = rows.map(function(c, i) {
+      var why = sample ? ['is-sample', '見本']
+        : /AI/.test(c.match_reason || '') ? ['is-ai', 'AIが特定 · 未検証']
+        : c.employee_number != null ? ['is-strong', '属性まで確認済み']
+        : ['', '社名・地域一致'];
+      var size = [];
+      if (c.capital_stock != null) size.push('資本金 ¥' + Number(c.capital_stock).toLocaleString());
+      if (c.employee_number != null) size.push(c.employee_number + '名');
+      return '<tr class="row-main" data-i="' + i + '">' +
+        '<td class="cell-name">' + esc(c.name || '-') + '</td>' +
+        '<td class="cell-addr">' + esc(c.location || c.prefecture || '-') + '</td>' +
+        '<td class="cell-tel">' + (c.phone_number
+            ? esc(c.phone_number)
+            : '<span class="tel-none">未取得</span>') + '</td>' +
+        '<td><span class="why ' + why[0] + '">' + esc(why[1]) + '</span></td>' +
+        '<td class="cell-addr">' + esc(size.length ? size.join(' / ') : '情報なし') + '</td>' +
+      '</tr>' +
+      '<tr class="row-why" data-i="' + i + '"><td colspan="5"><div class="why-in"><div><ul>' +
+        '<li>' + esc(TP.whyMatched(c, criteria)) + '</li>' +
+        '<li>' + esc(c.match_reason || '選定理由の記録なし') + '</li>' +
+        (c.company_url ? '<li>公式サイト: ' + esc(c.company_url) + '</li>' : '') +
+        (/AI/.test(c.match_reason || '') ? '<li>この番号は自動判定です。誤りが混ざることがあります。上のURLで確認できます。</li>' : '') +
+      '</ul></div></div></td></tr>';
+    }).join('');
+
+    document.getElementById('tp-table-foot').textContent = n > PREVIEW
+      ? '※画面に出しているのは先頭' + PREVIEW + '件です。全' + n.toLocaleString() + '件はダウンロードCSVに入っています。'
+      : (n ? '※行をクリックすると、その会社が選ばれた理由が開きます。' : '');
+
+    TP.syncEmptyState();
+    TP.renderRecipe(criteria, out);
+    TP.afterResult(criteria, out, withPhone);
   },
 
   aiStop: function() { this._aiAbort = true; },
 
   aiEnrich: async function() {
     if (!this.companies.length) { toast('先にリストを作成してください', 'error'); return; }
+    if (this._sampleRun) { toast('見本データでは電話番号を調べません（実在しない会社のため）', 'error'); return; }
     var keyEl = document.getElementById('lb-ai-key');
     var apiKey = keyEl.value.trim();
-    if (!apiKey) { toast('Anthropic APIキーを入力してください', 'error'); return; }
+    if (!apiKey) {
+      toast('Anthropic APIキーを入力してください', 'error');
+      document.getElementById('tp-ai-settings').open = true;
+      keyEl.focus();
+      return;
+    }
     if (apiKey.indexOf('sk-ant-') !== 0) { toast('APIキーの形式が正しくないようです（sk-ant-で始まります）', 'error'); return; }
     localStorage.setItem('telepy_anthropic_key', apiKey);
 
@@ -1426,7 +1846,7 @@ var LB = {
     var budget = Math.max(0, parseInt(document.getElementById('lb-ai-budget').value, 10) || 0);
     var targets = this.companies.filter(function(c) { return !c.phone_number; });
     if (limit > 0) targets = targets.slice(0, limit);
-    if (!targets.length) { toast('電話番号が無い会社がありません（補完は不要です）'); return; }
+    if (!targets.length) { toast('電話番号が無い会社がありません（調べる必要はありません）'); return; }
 
     this._aiAbort = false;
     this._aiModel = model;
@@ -1435,20 +1855,22 @@ var LB = {
     var prog = document.getElementById('lb-ai-progress');
     runBtn.disabled = true;
     stopBtn.classList.remove('hidden');
+    document.getElementById('tp-stop-note').classList.remove('hidden');
     prog.classList.remove('hidden');
+    document.getElementById('tp-cost-bar').classList.remove('hidden');
+    document.getElementById('tp-worklog').classList.remove('hidden');
+    TP.clearWorklog();
 
     var self = this;
     var done = 0, got = 0, failed = 0, budgetHit = false;
     function update() {
       var cost = aiCostYen(model, self._aiIn, self._aiOut, self._aiSearches);
       self._aiCostYen = cost;
-      var budgetPart = budget
-        ? '｜トークン ' + self._aiTokens().toLocaleString() + ' / ' + budget.toLocaleString()
-        : '｜トークン ' + self._aiTokens().toLocaleString() + '（上限なし）';
-      prog.textContent = (budgetHit ? '🛑 上限に到達したため停止しました。' : '🤖 AI補完中... ') +
-        done + ' / ' + targets.length + ' 社（電話取得 ' + got + ' 件・失敗 ' + failed + ' 件）' +
-        budgetPart + '｜概算 ¥' + cost.toLocaleString() +
-        (budgetHit ? '' : ' — このタブを閉じないでください');
+      prog.textContent = (budgetHit ? '上限に達したので止めました。' : '調べています… ') +
+        done + ' / ' + targets.length + ' 社（電話番号 ' + got + ' 件取得・特定できず ' + failed + ' 件）';
+      TP.setCostBar(cost, budget ? aiCostYen(model, budget * 0.9, budget * 0.1, 0) : 0,
+                    self._aiTokens(), budget, self._aiSearches);
+      TP.setSpend(cost);
     }
     update();
 
@@ -1519,8 +1941,10 @@ var LB = {
             if (!comp.phone_number && d.phone_number) comp.phone_number = String(d.phone_number).trim();
             if (comp.phone_number) { got++; comp.match_reason = 'AIで補完（Web検索）'; }
           }
+          TP.logWork(i + 1, targets.length, comp);
         } catch (e) {
           failed++;
+          TP.logWork(i + 1, targets.length, comp, true);
           if (e.status === 401) { self._aiAbort = true; toast('APIキーが無効です: ' + e.message, 'error'); }
         } finally {
           release(reserved);
@@ -1533,18 +1957,19 @@ var LB = {
 
     runBtn.disabled = false;
     stopBtn.classList.add('hidden');
+    document.getElementById('tp-stop-note').classList.add('hidden');
     var allFailed = done > 0 && failed === done;
     var head = allFailed ? '⚠ すべての呼び出しが失敗しました（APIキー・通信・利用上限をご確認ください）。'
-      : budgetHit ? '🛑 上限に到達したため停止しました。'
-      : (this._aiAbort ? '⏸ 停止しました。' : '✅ 完了。');
+      : budgetHit ? '上限に達したので止めました。'
+      : (this._aiAbort ? '止めました。' : '終わりました。');
+    var miss = done - got;
     prog.textContent = head +
-      ' ' + done + '社を処理し、電話番号 ' + got + ' 件を取得しました' +
-      '（AI呼び出し ' + this._aiCalls + ' 回・トークン ' + this._aiTokens().toLocaleString() +
-      ' ≒ 実費 ¥' + this._aiCostYen.toLocaleString() + '）';
+      ' ' + done + '社のうち ' + got + '社に電話番号が入りました（実費 ¥' + this._aiCostYen.toLocaleString() + '）。' +
+      (miss > 0 ? miss + '社は特定できませんでした。ホームページが無い・電話番号を掲載していない会社が一定数あります。' : '');
     this.refreshTable();
-    if (allFailed) toast('AI補完に失敗しました（' + failed + '件すべてエラー）。APIキーと通信をご確認ください', 'error');
-    else if (budgetHit) toast('上限に達したので停止しました（実費 ¥' + this._aiCostYen.toLocaleString() + '）');
-    else if (!this._aiAbort) toast('AI補完が完了しました（電話 ' + got + ' 件取得）');
+    if (allFailed) toast('うまくいきませんでした（' + failed + '件すべてエラー）。APIキーと通信をご確認ください', 'error');
+    else if (budgetHit) toast('上限に達したので止めました（実費 ¥' + this._aiCostYen.toLocaleString() + '）');
+    else if (!this._aiAbort) toast('電話番号を ' + got + ' 件取得しました');
   },
 
   refreshTable: function() {
@@ -1553,10 +1978,15 @@ var LB = {
 
   download: function(fmt) {
     if (!this.companies.length) { toast('先にリストを作成してください', 'error'); return; }
+    // 実在しない会社の一覧が本物として出回るのを防ぐ
+    if (this._sampleRun) {
+      toast('見本はダウンロードできません。実在しない会社の一覧が本物として出回るのを防ぐためです', 'error');
+      return;
+    }
     if (fmt === 'call') {
       var withPhone = this.companies.filter(function(c) { return c.phone_number; }).length;
       if (withPhone === 0) {
-        toast('電話番号がまだ1件もありません。⑤のAI補完で埋めてからご利用ください', 'error');
+        toast('電話番号がまだ1件もありません。「電話番号を調べる」で埋めてからご利用ください', 'error');
         return;
       }
       if (withPhone < this.companies.length) {
@@ -1579,164 +2009,701 @@ var LB = {
 </script>
 
 <script>
-/* 追加のUIふるまい（テーマ切替・ステッパー同期・出現アニメ・カウントアップ）。
-   検索ロジック(LB)には一切触れず、DOMの変化を監視して見た目だけを制御する。 */
-var TP = {
-  furthest: 1,
 
+/* ===========================================================================
+   CX — データを手元に用意する係（内蔵データの取り込み・zipの直読み）。
+   検索ロジックには触れない。作ったものは既存の searchFiles にそのまま渡す。
+   =========================================================================== */
+var CX = {
+  seed: null,          // seed/manifest.json の中身（無ければ null）
+  seedLoaded: false,   // 実体(csv.gz)を取り込み済みか
+
+  /* 内蔵データの目録を読む。無くても正常系（手元のファイルを使う運用）。 */
+  loadManifest: async function () {
+    try {
+      var res = await fetch('seed/manifest.json', { cache: 'no-cache' });
+      if (!res.ok) throw new Error('no manifest');
+      var m = await res.json();
+      if (!m || !m.files || !m.files.length) throw new Error('empty manifest');
+      this.seed = m;
+    } catch (e) {
+      this.seed = null;
+    }
+    TP.renderSeedCard();
+  },
+
+  /* 内蔵データの実体を取り込む（初回だけ。数MB〜数十MBなので遅延で取る） */
+  useSeed: async function () {
+    if (!this.seed) { TP.openSheet('howto'); return false; }
+    if (this.seedLoaded && LB._files && LB._files.length) { TP.readyToRun(); return true; }
+    var desc = document.getElementById('tp-seed-desc');
+    var before = desc.textContent;
+    try {
+      var files = [];
+      for (var i = 0; i < this.seed.files.length; i++) {
+        var f = this.seed.files[i];
+        desc.textContent = '内蔵データを開いています…（' + (i + 1) + '/' + this.seed.files.length + '）';
+        var res = await fetch('seed/' + f.path, { cache: 'force-cache' });
+        if (!res.ok) throw new Error(f.path + ' を読めません');
+        var body = res.body;
+        if (/\.gz$/i.test(f.path)) {
+          if (typeof DecompressionStream === 'undefined') throw new Error('このブラウザは内蔵データの展開に対応していません');
+          body = body.pipeThrough(new DecompressionStream('gzip'));
+        }
+        var blob = await new Response(body).blob();
+        files.push(new File([blob], f.path.replace(/\.gz$/i, ''), { type: 'text/csv' }));
+      }
+      LB._files = files;
+      this.seedLoaded = true;
+      desc.textContent = before;
+      document.getElementById('lb-file-label').textContent =
+        '選択中: 内蔵データ（' + esc(this.seed.label || '') + '）';
+      TP.showReceipt(files);
+      TP.readyToRun();
+      return true;
+    } catch (e) {
+      desc.textContent = before;
+      toast('内蔵データを読めませんでした: ' + e.message, 'error');
+      TP.showDataCard(true);
+      return false;
+    }
+  },
+
+  /* zipを解凍せずに読む。中の一番大きいCSVを、必要なところだけ都度展開する
+     「見かけ上のファイル」にして返す。数百MBのzipでもメモリに載せない。
+     読めない形式（zip64・暗号化・非対応ブラウザ）のときは null を返し、
+     呼び出し側が従来どおり「解凍してください」と案内する。 */
+  openZip: async function (file) {
+    if (typeof DecompressionStream === 'undefined') return null;
+    var u8 = async function (start, end) {
+      return new Uint8Array(await file.slice(start, end).arrayBuffer());
+    };
+    var rd = function (b, o, n) { var v = 0; for (var i = n - 1; i >= 0; i--) v = v * 256 + b[o + i]; return v; };
+
+    // End of Central Directory を末尾から探す
+    var tailLen = Math.min(file.size, 66560);
+    var tail = await u8(file.size - tailLen, file.size);
+    var eocd = -1;
+    for (var i = tail.length - 22; i >= 0; i--) {
+      if (tail[i] === 0x50 && tail[i + 1] === 0x4b && tail[i + 2] === 0x05 && tail[i + 3] === 0x06) { eocd = i; break; }
+    }
+    if (eocd < 0) return null;
+    var cdSize = rd(tail, eocd + 12, 4), cdOff = rd(tail, eocd + 16, 4);
+    if (cdOff === 0xffffffff || cdSize === 0xffffffff) return null;  // zip64 は対象外
+
+    var cd = await u8(cdOff, cdOff + cdSize);
+    var best = null, p = 0;
+    while (p + 46 <= cd.length && rd(cd, p, 4) === 0x02014b50) {
+      var flag = rd(cd, p + 8, 2);
+      var method = rd(cd, p + 10, 2);
+      var csize = rd(cd, p + 20, 4), usize = rd(cd, p + 24, 4);
+      var nlen = rd(cd, p + 28, 2), elen = rd(cd, p + 30, 2), clen = rd(cd, p + 32, 2);
+      var lho = rd(cd, p + 42, 4);
+      var name = new TextDecoder('utf-8').decode(cd.subarray(p + 46, p + 46 + nlen));
+      var encrypted = (flag & 0x1) !== 0;
+      if (!encrypted && (method === 0 || method === 8) && /\.(csv|txt)$/i.test(name)) {
+        if (!best || usize > best.usize) best = { name: name, method: method, csize: csize, usize: usize, lho: lho };
+      }
+      p += 46 + nlen + elen + clen;
+    }
+    if (!best) return null;
+
+    // ローカルヘッダを読んでデータの開始位置を確定
+    var lh = await u8(best.lho, best.lho + 30);
+    if (rd(lh, 0, 4) !== 0x04034b50) return null;
+    var dataStart = best.lho + 30 + rd(lh, 26, 2) + rd(lh, 28, 2);
+    var dataEnd = dataStart + best.csize;
+    var raw = function () { return file.slice(dataStart, dataEnd); };
+    var stream = best.method === 0
+      ? function () { return raw().stream(); }
+      : function () { return raw().stream().pipeThrough(new DecompressionStream('deflate-raw')); };
+
+    // 文字コード判定用に、先頭64KBだけ先に展開しておく
+    var head, reader = stream().getReader(), got = [], total = 0;
+    while (total < 65536) {
+      var r = await reader.read();
+      if (r.done) break;
+      got.push(r.value); total += r.value.length;
+    }
+    try { await reader.cancel(); } catch (e) { /* すでに閉じている */ }
+    head = new Blob(got);
+
+    var short = best.name.split('/').pop();
+    return {
+      name: short + '（' + file.name + ' 内）',
+      size: best.usize,
+      _tpFromZip: file.name,
+      slice: function (a, b) { return head.slice(a, b); },
+      stream: stream,
+      arrayBuffer: function () { return new Response(stream()).arrayBuffer(); }
+    };
+  },
+
+  /* 選んだデータの素性を、走る前に読む（先頭64KBだけ） */
+  inspect: async function (file) {
+    try {
+      var enc = await resolveEncoding(file, document.getElementById('lb-encoding').value);
+      var buf = await file.slice(0, 65536).arrayBuffer();
+      var text = new TextDecoder(enc).decode(new Uint8Array(buf));
+      var first = (text.split('\n')[0] || '').split(',');
+      var nta = looksLikeNta(first);
+      var colmap = nta ? {} : buildColmap(first);
+      return {
+        ok: true, encoding: enc, nta: nta,
+        hasCapital: !nta && colmap.capital_stock != null,
+        hasEmployee: !nta && colmap.employee_number != null,
+        hasPhone: !nta && colmap.phone_number != null,
+        recognized: nta || colmap.name != null
+      };
+    } catch (e) {
+      return { ok: false, encoding: 'utf-8', nta: false, hasCapital: false, hasEmployee: false, hasPhone: false, recognized: false };
+    }
+  }
+};
+
+/* ===========================================================================
+   TP — 画面の見せ方だけを担当する係。数字は必ず実測値から作る。
+   =========================================================================== */
+var TP = {
+  _shape: null,     // 直近の inspect 結果
+  _spendYen: 0,
+  _logCount: 0,
+
+  /* ---- テーマ・小物 ---- */
   toggleTheme: function () {
     var cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
     var next = cur === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', next);
-    var meta = document.querySelector('meta[name="theme-color"]');
     try { localStorage.setItem('telepy_theme', next); } catch (e) {}
   },
-
   toggleKey: function () {
-    var i = document.getElementById('lb-ai-key');
-    if (i) i.type = (i.type === 'password') ? 'text' : 'password';
+    var el = document.getElementById('lb-ai-key');
+    el.type = el.type === 'password' ? 'text' : 'password';
+  },
+  updateBudgetHint: function () {
+    var b = Math.max(0, parseInt(document.getElementById('lb-ai-budget').value, 10) || 0);
+    var model = document.getElementById('lb-ai-model').value;
+    var el = document.getElementById('lb-budget-hint');
+    if (!b) { el.textContent = '上限なしで実行します（使った分だけ請求されます）。'; }
+    else {
+      var yen = aiCostYen(model, b * 0.9, b * 0.1, 0);
+      el.textContent = 'およそ ¥' + yen.toLocaleString() + ' 相当で自動的に止まります（Web検索の料金も含めて判定します）。';
+    }
+    this.updateQuote();
+  },
+  quick: function (btn) {
+    var m = { '工務店・不動産／一都三県／1000件': '工務店、不動産のリスト作成をお願いします。従業員数10-20名、資本金1000万円以下、一都三県で1000件ほどお願いします。',
+              '飲食店／大阪府／300件': '飲食店のリストをお願いします。大阪府で300件ほど。',
+              '製造業／愛知県／500件': '製造業のリストをお願いします。愛知県で500件ほど。' };
+    document.getElementById('lb-inquiry').value = m[btn.textContent] || btn.textContent;
+    document.getElementById('lb-inquiry').focus();
+  },
+  scrollTo: function (id) {
+    var el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  },
+  backToTop: function () {
+    var feed = document.getElementById('feed');
+    if (document.getElementById('stage').classList.contains('has-board')) feed.scrollTo({ top: 0, behavior: 'smooth' });
+    else window.scrollTo({ top: 0, behavior: 'smooth' });
+  },
+  backToCriteria: function () { this.mobileTab('feed'); this.scrollTo('lb-criteria-card'); },
+  mobileTab: function (which) {
+    var stage = document.getElementById('stage');
+    stage.classList.toggle('tab-feed', which === 'feed');
+    stage.classList.toggle('tab-board', which === 'board');
+    var btns = document.getElementById('tp-tabs').children;
+    btns[0].classList.toggle('is-on', which === 'feed');
+    btns[1].classList.toggle('is-on', which === 'board');
   },
 
-  /* 上限トークンが「最大いくらか」を、選んだモデルの価格で即座に示す */
-  updateBudgetHint: function () {
-    var hint = document.getElementById('lb-budget-hint');
-    var mEl = document.getElementById('lb-ai-model');
-    var bEl = document.getElementById('lb-ai-budget');
-    if (!hint || !mEl || !bEl) return;
-    var budget = Math.max(0, parseInt(bEl.value, 10) || 0);
-    if (!budget) {
-      hint.textContent = '⚠ 上限なし。件数ぶんだけ課金が続きます（止めたい時は停止ボタン）。';
+  /* ---- 内蔵データのカード ---- */
+  renderSeedCard: function () {
+    var desc = document.getElementById('tp-seed-desc');
+    var badge = document.getElementById('tp-seed-badge');
+    var acts = document.getElementById('tp-seed-actions');
+    var tileD = document.getElementById('tp-tile-seed-d');
+    if (CX.seed) {
+      var n = Number(CX.seed.companies || 0).toLocaleString();
+      desc.textContent = CX.seed.label + ' ' + n + '社（' + CX.seed.source + '・内蔵済み・無料）';
+      badge.textContent = '無料・内蔵済み';
+      badge.className = 'src-badge';
+      acts.innerHTML = '<button class="btn btn-ghost btn-sm" onclick="CX.useSeed()">このデータで探す</button>';
+      if (tileD) tileD.textContent = n + '社・無料・いますぐ';
+    } else {
+      desc.textContent = '内蔵データはまだ入っていません。国税庁の無料データ（zipのまま）か、手元のCSVを渡してください。';
+      badge.textContent = '未設置';
+      badge.className = 'src-badge';
+      acts.innerHTML =
+        '<button class="btn btn-ghost btn-sm" onclick="TP.openSheet(\'howto\')">取り方を教わる（30秒）</button>' +
+        '<button class="btn btn-quiet" onclick="document.getElementById(\'lb-file\').click()">手元のファイルを渡す</button>';
+      if (tileD) tileD.textContent = '未設置';
+      var tile = document.getElementById('tp-tile-seed');
+      if (tile) tile.disabled = false;
+    }
+  },
+
+  /* ---- 読み取り後の流れ ---- */
+  afterParse: function (c, text) {
+    var echo = document.getElementById('tp-echo');
+    document.getElementById('tp-echo-text').textContent = text;
+    echo.classList.remove('hidden');
+    echo.classList.add('reveal');
+
+    var read = document.getElementById('tp-read');
+    read.classList.remove('hidden');
+    document.getElementById('tp-read-lead').innerHTML = '依頼文を読んでいます<span class="caret"></span>';
+    document.getElementById('tp-read-done').classList.add('hidden');
+    document.getElementById('lb-criteria-card').classList.add('hidden');
+
+    // トレースは実際の parseHeuristic の戻り値だけで組み立てる（演出の数字は出さない）
+    var lines = [];
+    if (c.industries.length) lines.push('業種：<b>' + esc(c.industries.join('・')) + '</b> を検出');
+    else lines.push('業種：<b>読み取れませんでした</b>');
+    if (c.prefectures.length) lines.push('エリア：<b>' + esc(c.prefectures.join('・')) + '</b>（' + c.prefectures.length + '都道府県）');
+    else lines.push('エリア：<b>読み取れませんでした</b>');
+    var size = [];
+    if (c.employee_min != null || c.employee_max != null)
+      size.push('従業員 ' + (c.employee_min == null ? '' : c.employee_min) + '〜' + (c.employee_max == null ? '' : c.employee_max) + '名');
+    if (c.capital_max != null) size.push('資本金 ' + Number(c.capital_max).toLocaleString() + '円以下');
+    lines.push('規模：<b>' + (size.length ? esc(size.join(' ／ ')) : '指定なし') + '</b>');
+    lines.push('件数：<b>' + Number(c.target_count).toLocaleString() + '件</b>');
+    if (c.name_keywords.length)
+      lines.push('社名キーワードを' + c.name_keywords.length + '語に展開：' + esc(c.name_keywords.join('・')));
+
+    var ul = document.getElementById('tp-trace');
+    ul.innerHTML = lines.map(function (t, i) {
+      return '<li style="animation-delay:' + (i * 90) + 'ms">' + t + '</li>';
+    }).join('');
+
+    var self = this;
+    setTimeout(function () {
+      document.getElementById('tp-read-lead').textContent = '依頼文を読みました。';
+      document.getElementById('tp-read-done').classList.remove('hidden');
+      var card = document.getElementById('lb-criteria-card');
+      card.classList.remove('hidden');
+      card.classList.add('reveal');
+      self.renderChips();
+      self.renderAiParseRow();
+      self.scrollTo('lb-criteria-card');
+      // データが決まっていれば診断へ、決まっていなければデータの棚へ
+      if (LB._files && LB._files.length) self.readyToRun();
+      else if (CX.seed) CX.useSeed();
+      else self.showDataCard(true);
+    }, Math.min(lines.length * 90 + 260, 900));
+  },
+
+  renderAiParseRow: function () {
+    // APIキーを持っている人にだけ出す（押せないボタンは置かない）
+    var row = document.getElementById('tp-ai-parse-row');
+    var has = false;
+    try { has = !!localStorage.getItem('telepy_anthropic_key'); } catch (e) {}
+    row.innerHTML = has
+      ? '<span class="field-help">読み取りが的外れなときは、依頼文を書き換えてもう一度「条件を読み取る」を押してください。</span>'
+      : '';
+  },
+
+  /* 社名キーワードのチップ（実体は #lb-keywords。値は常にそこから作る） */
+  renderChips: function () {
+    var raw = document.getElementById('lb-keywords').value;
+    var kws = raw.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    document.getElementById('tp-kw-chips').innerHTML = kws.map(function (k, i) {
+      return '<span class="chip kw-chip">' + esc(k) +
+             '<button type="button" aria-label="削除" onclick="TP.dropChip(' + i + ')">×</button></span>';
+    }).join('') || '<span class="field-help">業種から自動で補います。</span>';
+  },
+  dropChip: function (i) {
+    var el = document.getElementById('lb-keywords');
+    var kws = el.value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    kws.splice(i, 1);
+    el.value = kws.join(', ');
+    this.renderChips();
+  },
+  syncChips: function () {
+    // 業種を書き換えたら、キーワードが空のときだけ追従させる
+    if (!document.getElementById('lb-keywords').value.trim()) this.renderChips();
+  },
+
+  /* ---- データの棚 ---- */
+  showDataCard: function (show) {
+    var msg = document.getElementById('tp-data-msg');
+    msg.classList.toggle('hidden', !show);
+    if (show) { msg.classList.add('reveal'); this.scrollTo('tp-data-msg'); }
+  },
+  showReceipt: async function (files) {
+    var el = document.getElementById('tp-receipt');
+    if (!files || !files.length) { el.classList.add('hidden'); return; }
+    var shape = await CX.inspect(files[0]);
+    this._shape = shape;
+    var mb = files.reduce(function (s, f) { return s + (f.size || 0); }, 0) / 1048576;
+    var kind = shape.nta ? '国税庁 法人番号データ形式' : shape.recognized ? '列を認識できました' : '列を認識できませんでした';
+    el.innerHTML = '棚に保管しました：<b>' + esc(files.map(function (f) { return f.name; }).join(' / ')) + '</b>' +
+      '（' + mb.toFixed(1) + 'MB・' + esc(shape.encoding === 'shift_jis' ? 'Shift_JIS' : 'UTF-8') + ' と判定・' + esc(kind) + '）';
+    el.classList.remove('hidden');
+  },
+
+  /* ---- 事前診断：走る前に、効かない条件を宣告する ---- */
+  readyToRun: async function () {
+    if (!LB._files || !LB._files.length) { this.showDataCard(true); return; }
+    if (!this._shape) this._shape = await CX.inspect(LB._files[0]);
+    var c = LB.collectCriteria();
+    var s = this._shape;
+    var rows = [];
+
+    rows.push(['ok', '社名に含まれる言葉 ' + c.name_keywords.length + '語', '適用します', null]);
+    rows.push(c.prefectures.length
+      ? ['ok', 'エリア ' + c.prefectures.length + '都道府県', '適用します', null]
+      : ['ng', 'エリア 指定なし', '全国から集めます', null]);
+    var capOn = c.capital_max != null || c.capital_min != null;
+    if (capOn) {
+      rows.push(s.hasCapital
+        ? ['ok', '資本金 上限¥' + Number(c.capital_max || 0).toLocaleString(), '適用します', null]
+        : ['ng', '資本金 上限¥' + Number(c.capital_max || 0).toLocaleString(), 'このデータに資本金の列がありません。適用しません。', 'cap']);
+    }
+    var empOn = c.employee_min != null || c.employee_max != null;
+    if (empOn) {
+      rows.push(s.hasEmployee
+        ? ['ok', '従業員数 ' + (c.employee_min || '') + '〜' + (c.employee_max || '') + '名', '適用します', null]
+        : ['ng', '従業員数 ' + (c.employee_min || '') + '〜' + (c.employee_max || '') + '名', 'このデータに従業員数の列がありません。適用しません。', 'emp']);
+    }
+    rows.push(s.hasPhone
+      ? ['ok', '電話番号', 'このデータに入っています', null]
+      : ['ng', '電話番号', 'このデータには入っていません。あとで1社ずつ調べます。', 'tel']);
+
+    document.getElementById('tp-preflight').innerHTML = rows.map(function (r) {
+      var fix = r[3] === 'cap' || r[3] === 'emp'
+        ? '<button class="btn btn-ghost btn-sm" onclick="TP.showDataCard(true)">列のあるデータを渡す</button>'
+        : '';
+      return '<div class="pf-row ' + (r[0] === 'ok' ? 'pf-ok' : 'pf-ng') + '">' +
+        '<span class="pf-mark">' + (r[0] === 'ok' ? '✓' : '✗') + '</span>' +
+        '<span class="pf-text"><b>' + esc(r[1]) + '</b> — <i>' + esc(r[2]) + '</i></span>' + fix + '</div>';
+    }).join('');
+    document.getElementById('tp-preflight-wrap').classList.remove('hidden');
+
+    var why = document.getElementById('tp-preflight-why');
+    if (s.nta) {
+      why.textContent = '国税庁の法人番号データに入っているのは、社名・所在地・郵便番号だけです。全国を無料でカバーできる代わりに、資本金・従業員数・電話番号は入っていません。';
+      why.classList.remove('hidden');
+    } else { why.classList.add('hidden'); }
+
+    // 効かない条件があるときだけ聞き返す
+    var ask = document.getElementById('tp-ask');
+    if (empOn && !s.hasEmployee) {
+      document.getElementById('tp-ask-text').textContent =
+        'ひとつ確認させてください。従業員数の条件がありますが、いま使うデータには従業員数が入っていません。どうしますか？';
+      document.getElementById('tp-ask-chips').innerHTML =
+        '<button type="button" class="chip is-primary" onclick="TP.answer(\'include\')">不明も含めて集める（おすすめ）</button>' +
+        '<button type="button" class="chip" onclick="TP.showDataCard(true)">従業員数の入ったデータを渡す</button>' +
+        '<button type="button" class="chip" onclick="TP.answer(\'drop\')">この条件は外す</button>';
+      ask.classList.remove('hidden');
+    } else { ask.classList.add('hidden'); }
+
+    var go = document.getElementById('tp-go');
+    var target = Number(c.target_count || 100);
+    document.getElementById('tp-go-text').textContent = CX.seedLoaded
+      ? '内蔵データで足ります。このまま探しますか？'
+      : '準備できました。このまま探しますか？';
+    document.getElementById('tp-go-label').textContent = 'このまま探す（' + target.toLocaleString() + '件）';
+    go.classList.remove('hidden');
+    go.classList.add('reveal');
+    this.showDataCard(false);
+    this.scrollTo('tp-go');
+  },
+  answer: function (kind) {
+    if (kind === 'include') {
+      document.getElementById('lb-unknown').checked = true;
+      toast('従業員数では絞らずに集めます');
+    } else if (kind === 'drop') {
+      document.getElementById('lb-emp-min').value = '';
+      document.getElementById('lb-emp-max').value = '';
+      toast('従業員数の条件を外しました');
+    }
+    document.getElementById('tp-ask').classList.add('hidden');
+    this.readyToRun();
+  },
+
+  enterSampleMode: function () {
+    this.showDataCard(false);
+    this.readyToRun();
+  },
+
+  /* ---- 結果まわり ---- */
+  setRing: function (ratio) {
+    var C = 2 * Math.PI * 16;
+    var ring = document.getElementById('tp-ring');
+    ring.querySelector('.ring-fg').setAttribute('stroke-dashoffset', String(C * (1 - Math.max(0, Math.min(1, ratio)))));
+    ring.classList.toggle('is-good', ratio >= 0.5);
+    document.getElementById('tp-ring-pct').textContent = Math.round(ratio * 100) + '%';
+  },
+  syncEmptyState: function () {
+    var n = LB.companies.length;
+    document.getElementById('lb-empty').classList.toggle('hidden', n > 0);
+    document.getElementById('lb-table-wrap').querySelector('table').classList.toggle('hidden', n === 0);
+  },
+  whyMatched: function (c, criteria) {
+    var hit = (criteria.name_keywords || []).filter(function (k) { return k && (c.name || '').indexOf(k) !== -1; });
+    var parts = [];
+    parts.push(hit.length ? '社名に「' + hit.join('・') + '」が含まれます' : '社名で一致');
+    if (c.prefecture) parts.push('所在地から ' + c.prefecture + ' と判定');
+    if (c.capital_stock == null && c.employee_number == null) parts.push('資本金・従業員数はこのデータに情報がありません');
+    parts.push(c.phone_number ? '電話番号あり' : '電話番号 未取得');
+    return parts.join('／');
+  },
+  renderRecipe: function (criteria, out) {
+    var src = LB._sampleRun ? '同梱の見本データ（架空の会社）'
+      : CX.seedLoaded && CX.seed ? (CX.seed.source + '（' + CX.seed.label + '）')
+      : (LB._files || []).map(function (f) { return f.name; }).join(' / ');
+    var items = [
+      '出所：' + src + '。絞り込みはすべてこの端末の中で実行しました。',
+      '条件：社名に「' + (criteria.name_keywords || []).join('・') + '」のいずれかを含む／' +
+        (criteria.prefectures.length ? '所在地が ' + criteria.prefectures.join('・') : 'エリア指定なし') +
+        '／目標' + Number(criteria.target_count).toLocaleString() + '件',
+      '走査：' + out.scanned.toLocaleString() + '行を読み、条件に当てはまった ' + out.total.toLocaleString() +
+        '社 から ' + LB.companies.length.toLocaleString() + '社 を選びました。',
+      LB._aiCalls > 0
+        ? 'AIを使った箇所：電話番号と公式サイトの特定のみ。' + (LB._aiModel || '') + ' に ' + LB._aiCalls +
+          '回問い合わせ（Web検索 ' + LB._aiSearches + '回）、実費 ¥' + (LB._aiCostYen || 0).toLocaleString() +
+          '。条件の読み取りにAIは使っていません。'
+        : 'AIを使った箇所：ありません（この時点では0円です）。条件の読み取りは telepy 内の辞書とパターンで行っています。',
+      '分かっていないこと：' +
+        (LB.companies.length - LB.companies.filter(function (c) { return c.phone_number; }).length).toLocaleString() +
+        '社は電話番号が未取得です。' + (out.dataHasCapital ? '' : '資本金・従業員数は、このデータには元から含まれていません。')
+    ];
+    document.getElementById('tp-recipe-body').innerHTML = items.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('');
+  },
+  copyRecipe: function () {
+    var lines = Array.prototype.map.call(document.querySelectorAll('#tp-recipe-body li'),
+      function (li, i) { return (i + 1) + '. ' + li.textContent; });
+    var text = 'telepy 架電リストの内訳\n' + lines.join('\n');
+    var done = function () { toast('内訳をコピーしました'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, function () { toast('コピーできませんでした', 'error'); });
+    else toast('このブラウザではコピーできません', 'error');
+  },
+  afterResult: function (criteria, out, withPhone) {
+    var n = LB.companies.length;
+    var v = document.getElementById('tp-verdict');
+    var body = document.getElementById('tp-verdict-body');
+    if (n === 0) {
+      body.innerHTML = '<p>条件に合う会社が見つかりませんでした。社名に含まれる言葉やエリアをゆるめるか、別のデータを渡してみてください。</p>';
+      v.classList.remove('hidden');
+      document.getElementById('lb-ai-card').classList.add('hidden');
       return;
     }
-    // この用途は「Web検索結果が入力・JSONが出力」なので入力9割で見積もる
-    var p = AI_PRICING[mEl.value] || AI_PRICING['claude-haiku-4-5'];
-    var usd = budget * 0.9 / 1e6 * p[0] + budget * 0.1 / 1e6 * p[1];
-    hint.textContent = '実費が上限相当額（約 ¥' + Math.round(usd * USD_JPY).toLocaleString() +
-      '）に達した時点でAIを自動停止します。Web検索料（約¥1.5/社）もこの上限に含めて判定します。';
-  },
-
-  reachStep: function (n) {
-    if (n > this.furthest) this.furthest = n;
-    this.paint();
-  },
-
-  paint: function () {
-    var f = this.furthest;
-    var nodes = document.querySelectorAll('.step-node');
-    for (var i = 0; i < nodes.length; i++) {
-      var s = parseInt(nodes[i].getAttribute('data-step'), 10);
-      nodes[i].classList.remove('is-done', 'is-active', 'is-upcoming');
-      if (s < f) nodes[i].classList.add('is-done');
-      else if (s === f) nodes[i].classList.add('is-active');
-      else nodes[i].classList.add('is-upcoming');
+    // 県別の内訳は、走査後の実データから数える
+    var byPref = {};
+    LB.companies.forEach(function (c) { var p = c.prefecture || '不明'; byPref[p] = (byPref[p] || 0) + 1; });
+    var top = Object.keys(byPref).sort(function (a, b) { return byPref[b] - byPref[a]; }).slice(0, 4)
+      .map(function (p) { return p + ' ' + byPref[p].toLocaleString(); }).join('・');
+    var html = '<p>' + esc(n.toLocaleString()) + '社そろいました。' + esc(top) + '。</p>';
+    if (LB._sampleRun) {
+      html += '<p>ただし、これは動作確認用の見本です。表示中の会社も電話番号も実在しないため、ダウンロードはできません。' +
+              '本番のリストを作るには、内蔵データか手元のデータを使ってください。</p>';
+    } else if (withPhone === 0) {
+      html += '<p>ただし、<strong>この時点では1件も架電できません</strong>。国税庁のデータに電話番号が入っていないためです。' +
+              'ここから先が、私の本番です。</p>';
     }
-    var stp = document.getElementById('stepper');
-    if (stp) stp.style.setProperty('--step-progress', ((f - 1) / 4).toFixed(4));
+    body.innerHTML = html;
+    v.classList.remove('hidden');
+    v.classList.add('reveal');
+    document.getElementById('lb-ai-card').classList.toggle('hidden', LB._sampleRun || withPhone === n);
+    this.updateQuote();
+    this.mobileTab('board');
+    // 済んだ工程を畳む。畳まないと作業メモが伸び続け、右のリストの見出し
+    //（架電できる件数とダウンロード）が画面外に押し出される。
+    this.compact(criteria);
+    this.scrollTo('tp-compact');
   },
 
-  gotoStep: function (step) {
-    var map = { 1: 'card-1', 2: 'lb-criteria-card', 3: 'lb-data-card', 4: 'lb-result-card', 5: 'lb-ai-card' };
-    var el = document.getElementById(map[step]);
-    if (step === 4 && (!el || el.classList.contains('hidden'))) el = document.getElementById('lb-run');
-    if (el && !el.classList.contains('hidden')) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  /* ---- 済んだ工程を畳む / 戻す ---- */
+  compact: function (criteria) {
+    var parts = [];
+    if (criteria.industries.length) parts.push(criteria.industries.join('・'));
+    parts.push(criteria.prefectures.length ? criteria.prefectures.join('・') : 'エリア指定なし');
+    parts.push(Number(criteria.target_count).toLocaleString() + '件');
+    document.getElementById('tp-compact-desc').textContent = parts.join('／');
+    document.getElementById('tp-compact-src').textContent =
+      LB._sampleRun ? '見本データ'
+      : CX.seedLoaded && CX.seed ? '内蔵データ'
+      : (LB._files || []).map(function (f) { return f.name; }).join(' / ').slice(0, 40) || 'データ';
+    document.getElementById('tp-intro').classList.add('hidden');
+    document.getElementById('tp-echo').classList.add('hidden');
+    document.getElementById('tp-read').classList.add('hidden');
+    document.getElementById('tp-data-msg').classList.add('hidden');
+    var c = document.getElementById('tp-compact');
+    c.classList.remove('hidden');
+    c.classList.add('reveal');
   },
-
-  countUp: function () {
-    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    var values = document.querySelectorAll('#lb-stats .value');
-    for (var i = 0; i < values.length; i++) {
-      (function (v) {
-        if (v.dataset.counted) return;
-        var raw = (v.textContent || '').trim();
-        v.dataset.counted = '1';
-        if (!/^[\d,]+$/.test(raw)) return;
-        var target = parseInt(raw.replace(/,/g, ''), 10);
-        if (!isFinite(target) || target <= 0 || reduce) return;
-        var start = null, dur = 600;
-        function tick(now) {
-          if (start === null) start = now;
-          var p = Math.min(1, (now - start) / dur);
-          var e = 1 - Math.pow(1 - p, 3);
-          v.textContent = Math.round(target * e).toLocaleString();
-          if (p < 1) requestAnimationFrame(tick); else v.textContent = target.toLocaleString();
-        }
-        requestAnimationFrame(tick);
-      })(values[i]);
+  expand: function (fromTop) {
+    document.getElementById('tp-compact').classList.add('hidden');
+    document.getElementById('tp-echo').classList.remove('hidden');
+    document.getElementById('tp-read').classList.remove('hidden');
+    if (fromTop) {
+      document.getElementById('tp-intro').classList.remove('hidden');
+      this.mobileTab('feed');
+      this.backToTop();
+    } else {
+      this.mobileTab('feed');
+      this.scrollTo('lb-criteria-card');
     }
   },
 
-  watch: function (id, onShow, onHide) {
-    var el = document.getElementById(id);
-    if (!el) return;
-    var self = this;
-    var obs = new MutationObserver(function () {
-      var hidden = el.classList.contains('hidden');
-      if (!hidden && !el.dataset.shown) {
-        el.dataset.shown = '1';
-        requestAnimationFrame(function () { el.classList.add('reveal'); });
-        if (onShow) onShow();
-      } else if (hidden && el.dataset.shown) {
-        el.dataset.shown = '';
-        el.classList.remove('reveal');
-        if (onHide) onHide();
-      }
+  /* ---- 見積・実費 ---- */
+  updateQuote: function () {
+    var box = document.getElementById('tp-quote-amt');
+    if (!box) return;
+    var model = (document.getElementById('lb-ai-model') || {}).value || 'claude-haiku-4-5';
+    var targets = LB.companies.filter(function (c) { return !c.phone_number; }).length;
+    var limitEl = document.getElementById('lb-ai-limit');
+    var limit = parseInt((limitEl || {}).value, 10) || 0;
+    var n = limit > 0 ? Math.min(limit, targets) : targets;
+    // 1社あたりの見積り: 実測が出ていればそれを、無ければ控えめな既定値を使う
+    var per = LB._aiCalls > 0
+      ? aiCostYen(model, LB._aiIn / LB._aiCalls, LB._aiOut / LB._aiCalls, LB._aiSearches / LB._aiCalls)
+      : aiCostYen(model, 1800, 200, 1);
+    box.textContent = n ? '≒ ¥' + Math.round(per * n).toLocaleString() : '¥0';
+    document.getElementById('tp-quote-sub').textContent = n
+      ? n.toLocaleString() + '社ぶんの概算（1社あたり ≒ ¥' + per.toFixed(per < 10 ? 1 : 0) + '）。実費は終わったときに実測で出します。'
+      : '電話番号が無い会社がありません。';
+    var chips = document.getElementById('tp-quote-chips');
+    if (chips) {
+      var mk = function (v, label) {
+        var m = v > 0 ? Math.min(v, targets) : targets;
+        return '<button type="button" class="chip" onclick="TP.setLimit(' + v + ')">' + label +
+               ' ≒ ¥' + Math.round(per * m).toLocaleString() + '</button>';
+      };
+      chips.innerHTML = targets ? mk(10, '10社だけ試す') + mk(0, targets.toLocaleString() + '社ぜんぶ') : '';
+    }
+  },
+  setLimit: function (v) {
+    document.getElementById('lb-ai-limit').value = String(v);
+    this.updateQuote();
+  },
+  setSpend: function (yen) {
+    this._spendYen = yen;
+    var chip = document.getElementById('tp-cost-chip');
+    chip.textContent = '今日の利用 ¥' + Math.round(yen).toLocaleString();
+    chip.classList.toggle('is-spending', yen > 0);
+  },
+  setCostBar: function (yen, capYen, tokens, budget, searches) {
+    document.getElementById('tp-cost-label').textContent =
+      '¥' + Math.round(yen).toLocaleString() + (capYen ? ' / 上限 ¥' + Math.round(capYen).toLocaleString() : '（上限なし）') +
+      ' ・ トークン ' + tokens.toLocaleString() + (budget ? ' / ' + budget.toLocaleString() : '') +
+      ' ・ Web検索 ' + searches + '回';
+    var meter = document.getElementById('tp-cost-meter');
+    var pct = capYen ? Math.min(100, yen / capYen * 100) : 0;
+    meter.firstElementChild.style.width = pct + '%';
+    meter.classList.toggle('is-hot', pct > 80);
+  },
+  clearWorklog: function () { document.getElementById('tp-worklog').innerHTML = ''; this._logCount = 0; },
+  logWork: function (i, total, comp, failed) {
+    var ul = document.getElementById('tp-worklog');
+    var li = document.createElement('li');
+    if (failed || !comp.phone_number) {
+      li.className = 'is-miss';
+      li.textContent = '（' + i + '/' + total + '）' + comp.name + ' — 公式サイトを特定できず、番号は取れませんでした';
+    } else {
+      // 番号は下4桁を伏せる（画面共有や録画でそのまま流れるのを避ける）
+      li.innerHTML = '（' + i + '/' + total + '）<b>' + esc(comp.name) + '</b> — ' +
+        esc(String(comp.phone_number).replace(/\d{4}$/, '****')) + ' 取得';
+    }
+    ul.insertBefore(li, ul.firstChild);
+    while (ul.children.length > 8) ul.removeChild(ul.lastChild);
+  },
+
+  /* ---- シート ---- */
+  openSheet: function (tab) {
+    var t = { price: '料金', team: 'チームに配る', source: '出所の見かた', howto: 'データの取り方' };
+    document.getElementById('tp-sheet-title').textContent = t[tab] || '料金';
+    Array.prototype.forEach.call(document.getElementById('tp-sheet-tabs').children, function (b) {
+      b.classList.toggle('is-on', b.getAttribute('data-tab') === tab);
     });
-    obs.observe(el, { attributes: true, attributeFilter: ['class'] });
+    document.getElementById('tp-sheet-body').innerHTML = this.sheetHtml(tab);
+    var d = document.getElementById('tp-sheet');
+    if (!d.open) d.showModal();
+  },
+  closeSheet: function () { document.getElementById('tp-sheet').close(); },
+  sheetHtml: function (tab) {
+    if (tab === 'team') {
+      return '<p><strong>telepy にはサーバーがありません。</strong>そのため、誰がいくら使ったかを会社側でまとめて見る機能はありません。ここは正直にお伝えします。</p>' +
+        '<h4>代わりにできること</h4>' +
+        '<ul><li>条件・件数・モデル・上限を書き込んだ設定リンクを配れます（<strong>APIキーは含まれません</strong>）。</li>' +
+        '<li>上限は Anthropic Console 側でも掛けられます。ワークスペースを1つ作り、メンバーごとにAPIキーを発行して、そのワークスペースに月額上限を設定してください。telepy 側の上限と二重に効きます。</li></ul>' +
+        '<div class="btn-row" style="margin-top:12px;"><button class="btn btn-ghost btn-sm" onclick="TP.copyShareLink()">設定リンクをコピー</button></div>';
+    }
+    if (tab === 'source') {
+      return '<h4>出所の見かた</h4><ul>' +
+        '<li><strong>ルール解析</strong>＝この端末に書かれた辞書とパターン。0円・通信なし・毎回同じ結果になります。<strong>AIではありません。</strong></li>' +
+        '<li><strong>Claude</strong>＝Anthropic API の実際の応答。telepy でAIを使うのは、電話番号と公式サイトを調べる工程<strong>だけ</strong>です。</li>' +
+        '<li><strong>この端末の集計</strong>＝走査結果から計算した数字。件数・行数・実費はすべて実測です。</li></ul>' +
+        '<p style="margin-top:12px;color:var(--muted);font-size:12.5px">telepy の返答文は、あらかじめ用意した文章に、この端末で計算した実際の数字を差し込んで作っています。文章そのものをAIが書いているわけではありません。</p>';
+    }
+    if (tab === 'howto') {
+      return '<h4>国税庁の無料データ（全国約500万法人）</h4>' +
+        '<ol><li><a href="https://www.houjin-bangou.nta.go.jp/download/zenken/" target="_blank" rel="noopener">法人番号公表サイトの「全件データのダウンロード」</a>を開く</li>' +
+        '<li>都道府県別を選ぶ（東京都だけで約110万法人）</li>' +
+        '<li>落ちてきた zip を、この画面にそのままドロップする</li></ol>' +
+        '<p style="margin-top:10px"><strong>解凍は要りません。</strong>zip のまま読み込めます。</p>' +
+        '<p style="margin-top:10px;color:var(--warning)">※「検索画面からのダウンロード」は上限10,000件です。1,000件のリストでも母集団が足りなくなるので、必ず「全件データ」の zip を使ってください。</p>' +
+        '<p style="margin-top:10px;color:var(--muted);font-size:12.5px">入っているのは 社名・所在地・郵便番号 だけです。電話番号・資本金・従業員数は含まれません。</p>';
+    }
+    return '<div class="plan">' +
+      '<div class="free"><span class="tag">無料</span><div class="amt">¥0</div>' +
+      '<p>会社を探して名簿にするところまで。内蔵データ・手元のCSV/zip・絞り込み・詳細CSVの書き出し。通信も課金も発生しません。</p></div>' +
+      '<div class="paid"><span class="tag">従量</span><div class="amt">¥3〜40 <span style="font-size:13px;color:var(--muted)">/ 社</span></div>' +
+      '<p>電話番号と公式サイトを1社ずつ調べる工程だけ。あなたの Anthropic APIキーで直接課金され、上限を決めれば自動で止まります。</p></div></div>' +
+      '<h4>いま使った分</h4><p>今日の利用 ¥' + Math.round(this._spendYen).toLocaleString() + '</p>' +
+      '<h4>安く済ませたい場合</h4>' +
+      '<p>手元で <code>python main.py</code> を起動すると、無料のWeb検索で大半を埋めて、迷った会社だけAIに確認します（1,000件で ¥300〜1,500）。ブラウザだけでは外部サイトを直接読めない仕様（CORS）のため、無料の巡回はPC側が担当します。</p>';
+  },
+  copyShareLink: function () {
+    var c = LB.collectCriteria();
+    var p = new URLSearchParams();
+    p.set('ind', c.industries.join(','));
+    p.set('pref', c.prefectures.join(','));
+    p.set('kw', c.name_keywords.join(','));
+    p.set('n', String(c.target_count));
+    p.set('model', document.getElementById('lb-ai-model').value);
+    p.set('budget', document.getElementById('lb-ai-budget').value);
+    var url = location.origin + location.pathname + '#' + p.toString();  // APIキーは絶対に載せない
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(function () { toast('設定リンクをコピーしました（APIキーは含まれていません）'); },
+        function () { toast('コピーできませんでした', 'error'); });
+    } else { toast('このブラウザではコピーできません', 'error'); }
+  },
+  applyShareLink: function () {
+    if (!location.hash || location.hash.length < 3) return;
+    try {
+      var p = new URLSearchParams(location.hash.slice(1));
+      if (p.get('ind') != null) document.getElementById('lb-industries').value = p.get('ind');
+      if (p.get('pref') != null) document.getElementById('lb-prefectures').value = p.get('pref');
+      if (p.get('kw') != null) document.getElementById('lb-keywords').value = p.get('kw');
+      if (p.get('n')) document.getElementById('lb-count').value = p.get('n');
+      if (p.get('model')) document.getElementById('lb-ai-model').value = p.get('model');
+      if (p.get('budget')) document.getElementById('lb-ai-budget').value = p.get('budget');
+      if (p.get('kw') || p.get('ind')) {
+        document.getElementById('lb-criteria-card').classList.remove('hidden');
+        document.getElementById('tp-read').classList.remove('hidden');
+        document.getElementById('tp-read-lead').textContent = '共有された条件を読み込みました。';
+        this.renderChips();
+        toast('共有された条件を読み込みました（APIキーは含まれていません）');
+      }
+    } catch (e) { /* 壊れたリンクは黙って無視 */ }
   },
 
   init: function () {
-    var self = this;
-    this.paint();
     this.updateBudgetHint();
-
-    var btns = document.querySelectorAll('.step-node button');
-    for (var i = 0; i < btns.length; i++) {
-      (function (b) {
-        b.addEventListener('click', function () {
-          self.gotoStep(parseInt(b.parentNode.getAttribute('data-step'), 10));
-        });
-      })(btns[i]);
-    }
-
-    this.watch('lb-criteria-card', function () {
-      self.reachStep(2);
-      var card = document.getElementById('lb-criteria-card');
-      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      setTimeout(function () {
-        var first = document.getElementById('lb-industries');
-        try { if (first) first.focus({ preventScroll: true }); } catch (e) {}
-      }, 440);
+    this.renderChips();
+    this.applyShareLink();
+    CX.loadManifest();
+    var sheet = document.getElementById('tp-sheet');
+    sheet.addEventListener('click', function (e) { if (e.target === sheet) sheet.close(); });
+    // 行クリックで「なぜこの会社が選ばれたか」を開く
+    document.getElementById('lb-tbody').addEventListener('click', function (e) {
+      var tr = e.target.closest && e.target.closest('tr.row-main');
+      if (!tr) return;
+      var why = tr.nextElementSibling;
+      if (why && why.classList.contains('row-why')) why.classList.toggle('is-open');
     });
-    this.watch('lb-data-card');
-    this.watch('lb-progress-card', function () { self.reachStep(4); });
-    this.watch('lb-result-card', function () { self.reachStep(5); self.countUp(); });
-    this.watch('lb-ai-card');
-
-    var stats = document.getElementById('lb-stats');
-    if (stats) new MutationObserver(function () { self.countUp(); }).observe(stats, { childList: true });
-
-    var lbl = document.getElementById('lb-file-label');
-    var drop = document.getElementById('lb-drop');
-    if (lbl) new MutationObserver(function () {
-      var has = /^選択中/.test((lbl.textContent || '').trim());
-      if (drop) drop.classList.toggle('has-files', has);
-      if (has) self.reachStep(4);
-    }).observe(lbl, { childList: true, characterData: true, subtree: true });
-
-    var tb = document.getElementById('lb-tbody');
-    var empty = document.getElementById('lb-empty');
-    var tw = document.getElementById('lb-table-wrap');
-    function syncEmptyState() {
-      if (!tb) return;
-      var none = tb.children.length === 0;
-      if (empty) empty.classList.toggle('hidden', !none);
-      if (tw) tw.classList.toggle('hidden', none);
-    }
-    if (tb) new MutationObserver(syncEmptyState).observe(tb, { childList: true });
-    // 0件のときは表が空のままで上のObserverが発火しないため、
-    // 結果描画のたびに明示的に空状態を判定できるよう公開しておく
-    this.syncEmptyState = syncEmptyState;
-    syncEmptyState();
   }
 };
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { TP.init(); });
