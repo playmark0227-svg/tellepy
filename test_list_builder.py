@@ -118,7 +118,8 @@ def test_csv_output():
     assert "5000000" in rows[1]
 
     call = to_call_csv(companies)
-    call_rows = list(csv.reader(io.StringIO(call)))
+    assert call.startswith("﻿"), "Excelで社名が化けないようBOM付きであるべき"
+    call_rows = list(csv.reader(io.StringIO(call.lstrip("﻿"))))
     assert call_rows[0] == ["phone_number", "company_name"]
     assert call_rows[1][1] == "株式会社テスト工務店"
     assert call_rows[1][0] == "", "電話番号は空（gBizINFOに無い）"
@@ -175,6 +176,118 @@ def _write_csv(dirpath, name, content, encoding="utf-8"):
     with open(path, "w", encoding=encoding, newline="") as f:
         f.write(content)
     return path
+
+
+def test_capital_units_and_prefecture_extraction():
+    """資本金の単位換算と、実データにありがちな住所からの都道府県判定"""
+    from list_builder import _as_yen, _prefecture_from_location
+    # 単位を無視すると4〜8桁ずれた金額で絞り込んでしまう
+    assert _as_yen("1,000万円") == 10_000_000
+    assert _as_yen("1億円") == 100_000_000
+    assert _as_yen("1億2000万円") == 120_000_000
+    assert _as_yen("10000000") == 10_000_000
+    assert _as_yen("非公開") is None and _as_yen("") is None
+    # 〒や空白が前置された住所でも都道府県を取りこぼさない
+    assert _prefecture_from_location("東京都新宿区1-1") == "東京都"
+    assert _prefecture_from_location("〒160-0022 東京都新宿区") == "東京都"
+    assert _prefecture_from_location("京都府京都市中京区") == "京都府"
+    assert _prefecture_from_location("新宿区西新宿1-1") == ""
+    print("✓ 資本金の単位換算と住所からの都道府県判定")
+
+
+def test_heuristic_kyoto_not_dropped():
+    """「京都」を含む依頼文で京都府が落ちない（rstripで'京'になる不具合の再発防止）"""
+    parser = InquiryParser(api_key="")
+    c = asyncio.run(parser.parse("京都の工務店を50件お願いします"))
+    assert "京都府" in c.prefectures, c.prefectures
+    assert "東京都" not in c.prefectures, c.prefectures
+    print("✓ 「京都」の依頼で京都府を正しく抽出（東京都と誤認しない）")
+
+
+def test_local_dedupes_across_files():
+    """複数CSVに同じ会社がいても1件にまとめる（同じ会社に2回架電しないため）"""
+    with tempfile.TemporaryDirectory() as d:
+        _write_csv(d, "a.csv", SAMPLE_CSV)
+        _write_csv(d, "b.csv", SAMPLE_CSV)  # まったく同じ内容をもう1ファイル
+        src = LocalDataSource(data_dir=d)
+        criteria = SearchCriteria(
+            name_keywords=["工務店", "不動産", "住宅"],
+            prefectures=["東京都", "神奈川県"], target_count=100,
+        )
+        cand, _ = src.search(criteria)
+        names = [c.name for c in cand]
+        assert len(names) == len(set(names)), names
+    print(f"✓ 複数CSVをまたいだ重複排除（{len(names)}社・重複なし）")
+
+
+def test_capital_filter_skipped_when_no_capital_column():
+    """資本金の列が無いデータ（国税庁）で資本金条件により0件になってしまわない"""
+    def nta_row(cn, name, pref, city):
+        row = [""] * 30
+        row[1] = cn; row[6] = name; row[8] = "301"
+        row[9] = pref; row[10] = city; row[15] = "1000001"; row[23] = "1"
+        return ",".join(row)
+
+    raw = "\n".join([
+        nta_row("1010001000001", "株式会社まごころ工務店", "東京都", "世田谷区"),
+        nta_row("2020002000002", "ハマノ不動産株式会社", "神奈川県", "横浜市"),
+    ]) + "\n"
+    with tempfile.TemporaryDirectory() as d:
+        _write_csv(d, "nta_13.csv", raw)
+        criteria = SearchCriteria(
+            name_keywords=["工務店", "不動産"], prefectures=["東京都", "神奈川県"],
+            capital_max=10_000_000, employee_min=10, employee_max=20, target_count=1000,
+        )
+        builder = ListBuilder(local=LocalDataSource(data_dir=d))
+        companies, stats = asyncio.run(builder.build(
+            criteria, mode="local", include_unknown_employee=True, strict_capital=True,
+        ))
+        assert len(companies) == 2, f"資本金の列が無いのに絞り込まれて{len(companies)}件"
+        assert stats.capital_filter_skipped is True
+    print("✓ 資本金の列が無いデータでは資本金条件を適用しない（0件化を防止）")
+
+
+def test_local_progress_reports_scanned_rows():
+    """進捗が「走査行数」で刻まれる（該当0件のまま固まって見えないように）"""
+    rows = ["法人名,所在地"]
+    for i in range(12000):
+        rows.append(f"無関係な会社{i},大阪府大阪市北区{i}")
+    with tempfile.TemporaryDirectory() as d:
+        _write_csv(d, "big.csv", "\n".join(rows) + "\n")
+        seen = []
+        criteria = SearchCriteria(name_keywords=["工務店"], prefectures=["東京都"], target_count=10)
+        LocalDataSource(data_dir=d).search(criteria, progress=lambda s, f: seen.append(s))
+        assert seen, "1件も該当しないと進捗が一度も呼ばれない"
+        assert max(seen) >= 10000, seen[-3:]
+    print(f"✓ 該当0件でも走査進捗を通知（{len(seen)}回・最大{max(seen):,}行）")
+
+
+def test_sample_data_excluded_from_real_search():
+    """同梱デモの架空企業が本物の架電リストに混ざらない"""
+    with tempfile.TemporaryDirectory() as d:
+        _write_csv(d, "sample_companies.csv",
+                   "法人名,所在地,電話番号\n株式会社デモ工務店,東京都渋谷区1-1,03-0000-0000\n")
+        src = LocalDataSource(data_dir=d)
+        # サンプルしか無ければお試しとして使える
+        assert [p.name for p in src.available_files()] == ["sample_companies.csv"]
+        # 実データを置いたら、サンプルは対象から外れる
+        _write_csv(d, "nta_13.csv", "法人名,所在地\n株式会社ほんもの工務店,東京都新宿区1-1\n")
+        names = [p.name for p in src.available_files()]
+        assert names == ["nta_13.csv"], names
+        criteria = SearchCriteria(name_keywords=["工務店"], prefectures=["東京都"], target_count=100)
+        got = [c.name for c in src.search(criteria)[0]]
+        assert got == ["株式会社ほんもの工務店"], got
+    print("✓ 実データがある時はデモCSVを検索対象から除外")
+
+
+def test_partial_conversion_file_ignored():
+    """変換途中の一時ファイル(.csv.part)を検索対象にしない"""
+    with tempfile.TemporaryDirectory() as d:
+        _write_csv(d, "nta_13.csv", "法人名,所在地\n株式会社かんせい,東京都新宿区1-1\n")
+        _write_csv(d, "nta_14.csv.part", "法人名,所在地\n株式会社とちゅう,東京都新宿区2-2\n")
+        names = [p.name for p in LocalDataSource(data_dir=d).available_files()]
+        assert names == ["nta_13.csv"], names
+    print("✓ 変換途中の一時ファイルは読み込まない")
 
 
 def test_local_nta_raw_csv():
@@ -419,6 +532,13 @@ if __name__ == "__main__":
         test_local_search_and_build,
         test_local_column_autodetect_and_encoding,
         test_local_nta_raw_csv,
+        test_sample_data_excluded_from_real_search,
+        test_partial_conversion_file_ignored,
+        test_capital_units_and_prefecture_extraction,
+        test_heuristic_kyoto_not_dropped,
+        test_local_dedupes_across_files,
+        test_capital_filter_skipped_when_no_capital_column,
+        test_local_progress_reports_scanned_rows,
         test_resolve_mode,
         test_api_bot_reaches_target,
         test_api_bot_continues_until_exhausted,

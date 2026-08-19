@@ -113,6 +113,14 @@ async def _download_to(client: httpx.AsyncClient, url: str, dst: Path, progress=
                     await progress({"phase": "nta", "detail": f"{label} をダウンロード中... {mb:.0f}MB{pct}"})
 
 
+_update_lock = asyncio.Lock()
+
+
+def is_updating() -> bool:
+    """更新処理が実行中か（画面の二重起動防止に使う）。"""
+    return _update_lock.locked()
+
+
 async def check_and_update(
     prefectures: Optional[list[str]] = None,
     *,
@@ -122,8 +130,24 @@ async def check_and_update(
 ) -> dict:
     """公開ページを確認し、新しい全件データがあればダウンロード→変換して差し替える。
 
+    自動更新（毎日）と画面の「今すぐ更新」が同時に走ると同じファイルを取り合うため、
+    同時実行はロックで1つに制限する。
+
     Returns: {"updated": [...], "skipped": [...], "errors": [...], "state": {...}}
     """
+    async with _update_lock:
+        return await _check_and_update_locked(
+            prefectures, force=force, progress=progress, http_client=http_client
+        )
+
+
+async def _check_and_update_locked(
+    prefectures: Optional[list[str]] = None,
+    *,
+    force: bool = False,
+    progress=None,
+    http_client: Optional[httpx.AsyncClient] = None,
+) -> dict:
     prefs = prefectures or configured_prefectures()
     state = load_state()
     updated, skipped, errors = [], [], []

@@ -249,9 +249,9 @@ class InquiryParser:
             if industry in text:
                 c.industries.append(industry)
 
-        # 都道府県
+        # 都道府県（「京都府」→"京"のように末尾文字を削りすぎないよう1文字だけ落とす）
         for full in PREFECTURE_CODES:
-            stem = full.rstrip("都道府県")
+            stem = full[:-1] if full[-1] in "都道府県" else full
             if full in text or (len(stem) >= 2 and stem in text):
                 if full not in c.prefectures:
                     c.prefectures.append(full)
@@ -460,7 +460,7 @@ def _company_from_search(item: dict) -> Company:
 
 
 def _enrich_company(c: Company, detail: dict) -> None:
-    c.capital_stock = _as_int(detail.get("capital_stock"))
+    c.capital_stock = _as_yen(detail.get("capital_stock"))
     c.employee_number = _as_int(detail.get("employee_number"))
     industry = detail.get("industry")
     if isinstance(industry, list):
@@ -477,12 +477,21 @@ def _enrich_company(c: Company, detail: dict) -> None:
 
 
 def _prefecture_from_location(location: str) -> str:
+    """所在地から都道府県を判定する。
+
+    先頭一致だけだと「〒160-0022 東京都新宿区」のように郵便番号や空白が
+    前置された実データを取りこぼすため、先頭付近に現れる都道府県も拾う。
+    住所の後半にたまたま出てくる地名を誤検出しないよう探索範囲は先頭に限る。
+    """
     if not location:
         return ""
+    head = location[:24]
+    best, best_pos = "", None
     for full in PREFECTURE_CODES:
-        if location.startswith(full):
-            return full
-    return ""
+        pos = head.find(full)
+        if pos >= 0 and (best_pos is None or pos < best_pos):
+            best, best_pos = full, pos
+    return best
 
 
 # ---------------------------------------------------------------------------
@@ -501,13 +510,26 @@ class LocalDataSource:
     def __init__(self, data_dir=None, paths=None) -> None:
         self.data_dir = Path(data_dir) if data_dir else DATA_DIR
         self.paths = [Path(p) for p in paths] if paths else None
+        # 直近のsearch()で「資本金の列を持つデータがあったか」。
+        # 国税庁データ等は資本金を持たないため、資本金での厳密絞り込みを
+        # そのまま適用すると必ず0件になる。それを避ける判断材料に使う。
+        self.data_has_capital = False
+
+    # 同梱のお試し用データ。実データがある時に混ぜると、架空の会社と架空の
+    # 電話番号が本物の架電リストに紛れ込むため除外する。
+    SAMPLE_FILENAMES = {"sample_companies.csv"}
 
     def available_files(self) -> list[Path]:
         if self.paths:
             return [p for p in self.paths if p.exists()]
-        if self.data_dir.exists():
-            return sorted(p for p in self.data_dir.glob("*.csv"))
-        return []
+        if not self.data_dir.exists():
+            return []
+        # 変換途中の一時ファイル（*.csv.part）は対象外
+        files = sorted(p for p in self.data_dir.glob("*.csv") if not p.name.endswith(".part"))
+        real = [p for p in files if p.name not in self.SAMPLE_FILENAMES]
+        # 実データが1つでもあればサンプルは使わない。無ければお試し用に残す。
+        self.using_sample_only = bool(files) and not real
+        return real or files
 
     @property
     def configured(self) -> bool:
@@ -528,12 +550,17 @@ class LocalDataSource:
         Returns: (候補リスト, 走査した行数)
         """
         results: list[Company] = []
+        seen: set = set()          # 複数CSVをまたいだ重複排除（同じ会社を2度架電しないため）
         scanned = 0
         keywords = criteria.name_keywords
         prefs = set(criteria.prefectures)
+        self.data_has_capital = False  # 資本金の列を持つデータが1つでもあったか
         for path in self.available_files():
             for comp in self._iter_companies(path):
                 scanned += 1
+                # 進捗は「走査した行」で刻む（該当行だけだと長時間0のまま固まって見える）
+                if progress and scanned % 5000 == 0:
+                    progress(scanned, len(results))
                 if comp is None or not comp.name:
                     continue
                 if keywords and not any(kw and kw in comp.name for kw in keywords):
@@ -543,14 +570,16 @@ class LocalDataSource:
                     if pref not in prefs:
                         continue
                     comp.prefecture = pref
+                key = comp.corporate_number or f"{comp.name}|{comp.location}"
+                if key in seen:
+                    continue
+                seen.add(key)
                 comp.match_reason = "ローカルCSV一致"
                 results.append(comp)
                 if len(results) >= limit:
                     if progress:
                         progress(scanned, len(results))
                     return results, scanned
-                if progress and scanned % 5000 == 0:
-                    progress(scanned, len(results))
         return results, scanned
 
     def _iter_companies(self, path: Path):
@@ -576,6 +605,8 @@ class LocalDataSource:
             else:
                 colmap = self._build_colmap(first)
                 self._active_colmap = colmap
+                if colmap.get("capital_stock"):
+                    self.data_has_capital = True
                 for row in reader:
                     yield self._row_to_company(dict(zip(first, row)))
         finally:
@@ -609,7 +640,7 @@ class LocalDataSource:
             location=location,
             postal_code=get("postal_code"),
             prefecture=_prefecture_from_location(location),
-            capital_stock=_as_int(get("capital_stock")),
+            capital_stock=_as_yen(get("capital_stock")),
             employee_number=_as_int(get("employee_number")),
             industry=get("industry"),
             founding_year=_as_year(get("founding_year")),
@@ -626,20 +657,43 @@ def _chain_first(first, rest):
 
 
 def _open_text_auto(path: Path):
-    """日本語CSVによくあるUTF-8(BOM付)とShift_JIS(cp932)を自動判別して開く。"""
-    for enc in ("utf-8-sig", "cp932", "utf-8"):
+    """日本語CSVによくあるUTF-8(BOM付)とShift_JIS(cp932)を自動判別して開く。
+
+    判定は先頭の一部だけで行うため、途中で判定外のバイトが出る可能性がある。
+    そこで errors="replace" で開き、**巨大CSVの途中で例外落ちして走査全体が
+    無に帰すこと**を防ぐ（一部の文字が化けても他の行は使える方が実害が少ない）。
+    """
+    sample_size = 1 << 20  # 1MB見て判定（先頭8KBだけだと英数字ヘッダの後で誤判定する）
+    try:
+        with open(path, "rb") as bf:
+            sample = bf.read(sample_size)
+    except OSError:
+        sample = b""
+
+    def _decode(enc: str) -> Optional[str]:
         try:
-            f = open(path, encoding=enc, newline="")
-            f.read(8192)
-            f.seek(0)
-            return f
+            return sample.decode(enc)
         except UnicodeDecodeError:
-            try:
-                f.close()
-            except Exception:
-                pass
-            continue
-    return open(path, encoding="utf-8", errors="replace", newline="")
+            return None
+
+    def _has_jp(text: Optional[str]) -> bool:
+        return bool(text) and any("ぁ" <= ch <= "ヿ" or "一" <= ch <= "鿿" for ch in text)
+
+    # UTF-8は自己検証性が高いので優先。ただし先頭が英数字だけで日本語が
+    # 出てこない場合に限り、日本語として読めるcp932を採用する。
+    utf = _decode("utf-8-sig")
+    if _has_jp(utf):
+        enc = "utf-8-sig"
+    else:
+        sjis = _decode("cp932")
+        if _has_jp(sjis):
+            enc = "cp932"
+        elif utf is not None:
+            enc = "utf-8-sig"
+        else:
+            enc = "cp932" if sjis is not None else "utf-8"
+    # 判定は一部分のみなので、途中に想定外バイトが出ても走査全体が落ちないようにする
+    return open(path, encoding=enc, errors="replace", newline="")
 
 
 def _norm_header(name: str) -> str:
@@ -666,6 +720,7 @@ class BuildStats:
     ai_budget_tokens: int = 0   # 設定した上限（0=無制限）
     ai_budget_hit: bool = False  # 上限に達してAIを打ち切ったか
     ai_model: str = ""
+    capital_filter_skipped: bool = False  # 資本金の列が無く絞り込みを適用しなかった
     demo: bool = False
 
 
@@ -926,11 +981,23 @@ class ListBuilder:
         # ローカルCSVは属性が揃っているので詳細取得(enrich)は不要
         stats.enriched = sum(1 for c in cand_list if c.employee_number is not None)
 
+        # 資本金の列が無いデータ（国税庁の全件データ等）に「資本金で厳密に絞る」を
+        # そのまま適用すると全社が資本金不明で落ち、必ず0件になる。
+        # 列が無い場合は資本金条件を適用しない（ブラウザ版と同じ挙動に合わせる）。
+        strict_cap_effective = strict_capital and self.local.data_has_capital
+        stats.capital_filter_skipped = bool(
+            strict_capital
+            and not self.local.data_has_capital
+            and (criteria.capital_max is not None or criteria.capital_min is not None)
+        )
+        if stats.capital_filter_skipped:
+            logger.info("資本金の列が無いデータのため、資本金の絞り込みは適用しませんでした")
+
         selected = self._filter_and_rank(
             cand_list,
             criteria,
             include_unknown_employee=include_unknown_employee,
-            exclude_unknown_capital=strict_capital,
+            exclude_unknown_capital=strict_cap_effective,
         )
         stats.matched = len(selected)
         stats.unknown_employee = sum(1 for c in selected if c.employee_number is None)
@@ -1055,7 +1122,8 @@ def to_call_csv(companies: list[Company]) -> str:
     writer.writerow(["phone_number", "company_name"])
     for c in companies:
         writer.writerow([c.phone_number, c.name])
-    return buf.getvalue()
+    # 日本語WindowsのExcelで社名が文字化けしないようBOM付きで返す
+    return "﻿" + buf.getvalue()
 
 
 # ---------------------------------------------------------------------------
@@ -1144,6 +1212,41 @@ def _as_int(value) -> Optional[int]:
         return int(float(value))
     except (ValueError, TypeError):
         return None
+
+
+# 「1億2,000万円」「1000万」等の日本語表記を円に変換するための単位
+_YEN_UNITS = (("兆", 1_000_000_000_000), ("億", 100_000_000), ("万", 10_000))
+
+
+def _as_yen(value) -> Optional[int]:
+    """資本金などの金額を「円」に正規化する。
+
+    「1,000万円」→10,000,000 のように単位を換算する。単位が無ければそのまま円とみなす。
+    単位を無視して数値だけ拾うと4〜8桁ずれた金額で絞り込んでしまうため、専用に扱う。
+    """
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str):
+        return _as_int(value)
+    s = value.replace(",", "").replace("，", "").strip()
+    if not s:
+        return None
+    total = 0.0
+    matched = False
+    rest = s
+    for unit, mult in _YEN_UNITS:
+        m = re.search(r"(\d+(?:\.\d+)?)\s*" + unit, rest)
+        if m:
+            total += float(m.group(1)) * mult
+            matched = True
+            rest = rest[m.end():]
+    if matched:
+        # 「1億2000万5000円」のように単位の後に残った端数も加算する
+        tail = re.match(r"\s*(\d+(?:\.\d+)?)", rest)
+        if tail:
+            total += float(tail.group(1))
+        return int(total)
+    return _as_int(s)
 
 
 def _as_year(value) -> Optional[int]:

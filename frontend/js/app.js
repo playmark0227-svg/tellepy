@@ -526,6 +526,9 @@ const ListBuilder = {
     if (stats.demo) {
       msgs.push('⚠ これはデモデータです。Web自動探索を使うには検索モードを「Web自動探索」にしてください。');
     } else {
+      if (stats.capital_filter_skipped) {
+        msgs.push('ℹ このデータには資本金の列が無いため、資本金の条件は適用していません（国税庁データは社名・所在地のみ）。資本金で絞りたい場合はgBizINFOの一括CSVをご利用ください。');
+      }
       if (exhausted && target && job.count < target) {
         msgs.push(`⚠ ${src}で見つかったのは ${job.count} 社でした（目標 ${target} 社に到達前に候補を出し切りました）。地域・業種のキーワードを増やすと件数が伸びます。`);
       } else if (target && job.count >= target) {

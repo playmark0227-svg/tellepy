@@ -436,9 +436,14 @@ async def api_list_build(req: BuildRequest):
         "stats": {},
         "count": 0,
     }
-    # 古いジョブを整理（最新20件だけ保持）
+    # 古いジョブを整理（最新20件だけ保持）。
+    # 実行中のジョブは消さない（消すと画面がいつまでも結果を取得できなくなる）。
     if len(list_jobs) > 20:
-        for old in list(list_jobs)[:-20]:
+        removable = [
+            jid for jid, j in list(list_jobs.items())
+            if jid != job_id and j.get("status") in ("done", "error")
+        ]
+        for old in removable[: max(0, len(list_jobs) - 20)]:
             list_jobs.pop(old, None)
     asyncio.create_task(_run_build_job(job_id, req))
     return {"job_id": job_id, "status": "queued"}
@@ -743,4 +748,7 @@ if __name__ == "__main__":
     # 開発中にホットリロードしたい場合だけ RELOAD=1 python main.py で有効化。
     reload = os.environ.get("RELOAD", "").lower() in ("1", "true", "yes")
     port = int(os.environ.get("PORT", "8000"))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=reload)
+    # 管理画面にはAPIキーの設定画面があり認証が無いため、既定では同じPCからのみ
+    # 接続できるようにする。社内LANに公開したい場合だけ HOST=0.0.0.0 を指定する。
+    host = os.environ.get("HOST", "127.0.0.1")
+    uvicorn.run("main:app", host=host, port=port, reload=reload)

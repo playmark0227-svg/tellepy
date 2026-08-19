@@ -227,8 +227,14 @@ def test_name_matches():
     assert _name_matches("株式会社まごころ工務店", "まごころ工務店") is True
     assert _name_matches("ハマノ不動産", "株式会社ハマノ不動産｜横浜") is True  # 包含関係で一致
     assert _name_matches("株式会社まごころ工務店", "田中不動産") is False
-    assert _name_matches("株式会社A", "株式会社A") is False  # 正規化後3文字未満は不一致
-    print("✓ 会社名の一致判定（誤エンリッチ防止）")
+    assert _name_matches("株式会社A", "株式会社A") is True   # 完全一致は同一企業
+    assert _name_matches("株式会社A", "株式会社AB") is False  # 短い社名の部分一致は認めない
+    # 似て非なる別法人を取り違えない（他社の電話番号を載せないため）
+    assert _name_matches("株式会社中央建設", "中央建設工業株式会社") is False
+    assert _name_matches("さくら工務店", "さくら工務店 大宮支店") is False
+    # ページタイトルの付帯情報（｜以降）は無視して一致と判定する
+    assert _name_matches("ハマノ不動産", "株式会社ハマノ不動産｜横浜の不動産") is True
+    print("✓ 会社名の一致判定（別法人の取り違えを防ぐ）")
 
 
 class _StubProvider:

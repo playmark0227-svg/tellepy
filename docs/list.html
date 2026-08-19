@@ -583,7 +583,7 @@
           </div>
           <div class="field">
             <label class="field-label" for="lb-ai-budget">上限トークン（0＝無制限）</label>
-            <input type="number" id="lb-ai-budget" value="200000" min="0" step="10000" oninput="TP.updateBudgetHint()">
+            <input type="number" id="lb-ai-budget" value="1000000" min="0" step="100000" oninput="TP.updateBudgetHint()">
             <p class="field-help" id="lb-budget-hint">上限に達した時点でAIを自動停止します。</p>
           </div>
         </div>
@@ -646,6 +646,14 @@ var COLUMN_ALIASES = {
   phone_number: ["電話番号","tel","電話","phone_number","phone","ｔｅｌ"]
 };
 
+/* HTMLエスケープ。CSVやAIの応答をそのまま画面に差し込むと、細工された値で
+   スクリプトが動き、この端末に保存したAPIキーを盗まれる恐れがあるため必ず通す。 */
+function esc(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function toast(message, type) {
   type = type || 'success';
   var container = document.getElementById('toasts');
@@ -705,9 +713,17 @@ function parseHeuristic(text) {
   }
   for (var full in PREFECTURE_CODES) {
     var stem = full.replace(/[都道府県]$/, '');
-    if (text.indexOf(full) !== -1 || (stem.length >= 2 && text.indexOf(stem) !== -1)) {
-      if (c.prefectures.indexOf(full) === -1) c.prefectures.push(full);
+    var hit = text.indexOf(full) !== -1;
+    if (!hit && stem.length >= 2) {
+      // 「東京都」の中の「京都」を京都府と誤検出しないよう、前が「東」なら数えない
+      var at = text.indexOf(stem);
+      while (at !== -1) {
+        var prev = at > 0 ? text.charAt(at - 1) : '';
+        if (!(stem === '京都' && prev === '東')) { hit = true; break; }
+        at = text.indexOf(stem, at + 1);
+      }
     }
+    if (hit && c.prefectures.indexOf(full) === -1) c.prefectures.push(full);
   }
   var empRange = text.match(/従業員[数]?[^\d]{0,6}?(\d+)\s*[-〜~ー]\s*(\d+)/);
   if (empRange) { c.employee_min = parseInt(empRange[1], 10); c.employee_max = parseInt(empRange[2], 10); }
@@ -1040,7 +1056,8 @@ function toCallCsv(companies) {
   for (var i = 0; i < companies.length; i++) {
     lines.push([companies[i].phone_number, companies[i].name].map(csvEscape).join(","));
   }
-  return lines.join("\r\n");
+  // 日本語WindowsのExcelで社名が文字化けしないようBOMを付ける
+  return "﻿" + lines.join("\r\n");
 }
 
 function downloadText(filename, text, mime) {
@@ -1297,13 +1314,13 @@ var LB = {
     var fmtYen = function(v) { return v == null ? '-' : '¥' + Number(v).toLocaleString(); };
     document.getElementById('lb-tbody').innerHTML = this.companies.slice(0, 50).map(function(c) {
       return '<tr>' +
-        '<td>' + (c.name || '-') + '</td>' +
-        '<td>' + (c.prefecture || '-') + '</td>' +
-        '<td style="font-size:12px">' + (c.location || '-') + '</td>' +
-        '<td>' + fmtYen(c.capital_stock) + '</td>' +
-        '<td>' + (c.employee_number == null ? '-' : c.employee_number) + '</td>' +
-        '<td style="font-size:12px">' + (c.industry || '-') + '</td>' +
-        '<td style="font-size:12px">' + (c.phone_number || '-') + '</td>' +
+        '<td>' + esc(c.name || '-') + '</td>' +
+        '<td>' + esc(c.prefecture || '-') + '</td>' +
+        '<td style="font-size:12px">' + esc(c.location || '-') + '</td>' +
+        '<td>' + esc(fmtYen(c.capital_stock)) + '</td>' +
+        '<td>' + esc(c.employee_number == null ? '-' : c.employee_number) + '</td>' +
+        '<td style="font-size:12px">' + esc(c.industry || '-') + '</td>' +
+        '<td style="font-size:12px">' + esc(c.phone_number || '-') + '</td>' +
       '</tr>';
     }).join('');
     document.getElementById('lb-result-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -1352,12 +1369,23 @@ var LB = {
 
     /* 上限ガード。並列（2本）でも同時にすり抜けないよう、実行前に見積り分を確保する。
        実測が1件も無い最初の1回だけは必ず通し、以降は実測平均で判定する。
-       戻り値: 確保したトークン数（-1 なら上限で実行不可）。解放は必ず同じ値で行う。 */
+       戻り値: 確保したトークン数（-1 なら上限で実行不可）。解放は必ず同じ値で行う。
+       ※Web検索の料金はトークンに含まれないため、上限トークンを「円」に換算し、
+         検索料込みの実費がその金額を超えないかどうかで判定する（実費で守る）。 */
+    var budgetYen = budget ? aiCostYen(model, budget * 0.9, budget * 0.1, 0) : 0;
     function reserve() {
       if (!budget) return 0;
       var est = self._aiCalls > 0 ? Math.ceil(self._aiTokens() / self._aiCalls) : 2000;
       if (self._aiCalls === 0 && self._aiReserved === 0) { self._aiReserved += est; return est; }
-      if (self._aiTokens() + self._aiReserved + est > budget) return -1;
+      // 次の1回を実行した場合の実費見込み（検索料 $0.01/回 を必ず含める）
+      var searchPer = self._aiCalls > 0 ? self._aiSearches / self._aiCalls : 1;
+      var projected = aiCostYen(
+        model,
+        self._aiIn + (self._aiReserved + est) * 0.9,
+        self._aiOut + (self._aiReserved + est) * 0.1,
+        self._aiSearches + searchPer
+      );
+      if (projected > budgetYen) return -1;
       self._aiReserved += est;
       return est;
     }
@@ -1420,14 +1448,17 @@ var LB = {
 
     runBtn.disabled = false;
     stopBtn.classList.add('hidden');
-    var head = budgetHit ? '🛑 上限に到達したため停止しました。'
+    var allFailed = done > 0 && failed === done;
+    var head = allFailed ? '⚠ すべての呼び出しが失敗しました（APIキー・通信・利用上限をご確認ください）。'
+      : budgetHit ? '🛑 上限に到達したため停止しました。'
       : (this._aiAbort ? '⏸ 停止しました。' : '✅ 完了。');
     prog.textContent = head +
       ' ' + done + '社を処理し、電話番号 ' + got + ' 件を取得しました' +
       '（AI呼び出し ' + this._aiCalls + ' 回・トークン ' + this._aiTokens().toLocaleString() +
       ' ≒ 実費 ¥' + this._aiCostYen.toLocaleString() + '）';
     this.refreshTable();
-    if (budgetHit) toast('上限トークンに達したので停止しました（実費 ¥' + this._aiCostYen.toLocaleString() + '）');
+    if (allFailed) toast('AI補完に失敗しました（' + failed + '件すべてエラー）。APIキーと通信をご確認ください', 'error');
+    else if (budgetHit) toast('上限に達したので停止しました（実費 ¥' + this._aiCostYen.toLocaleString() + '）');
     else if (!this._aiAbort) toast('AI補完が完了しました（電話 ' + got + ' 件取得）');
   },
 
@@ -1484,8 +1515,8 @@ var TP = {
     // この用途は「Web検索結果が入力・JSONが出力」なので入力9割で見積もる
     var p = AI_PRICING[mEl.value] || AI_PRICING['claude-haiku-4-5'];
     var usd = budget * 0.9 / 1e6 * p[0] + budget * 0.1 / 1e6 * p[1];
-    hint.textContent = '上限に達した時点でAIを自動停止します。トークン上限ぶんの費用は最大 ¥' +
-      Math.round(usd * USD_JPY).toLocaleString() + ' 程度（＋Web検索 約¥1.5/社）。';
+    hint.textContent = '実費が上限相当額（約 ¥' + Math.round(usd * USD_JPY).toLocaleString() +
+      '）に達した時点でAIを自動停止します。Web検索料（約¥1.5/社）もこの上限に含めて判定します。';
   },
 
   reachStep: function (n) {

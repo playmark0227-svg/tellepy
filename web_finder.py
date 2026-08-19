@@ -22,7 +22,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from urllib.parse import unquote, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 
 import httpx
 
@@ -32,6 +32,7 @@ from list_builder import (
     SearchCriteria,
     PREFECTURE_CODES,
     _as_int,
+    _as_yen,
 )
 
 logger = logging.getLogger(__name__)
@@ -153,13 +154,31 @@ def _extract_prefecture(text: str) -> str:
     return m.group(1) if m else ""
 
 
+FAX_HINT_RE = re.compile(r"(?:FAX|Fax|fax|ＦＡＸ|ファックス|ファクス)[^0-9]{0,6}$")
+TEL_HINT_RE = re.compile(r"(?:TEL|Tel|tel|ＴＥＬ|電話|お電話|代表)[^0-9]{0,8}$")
+
+
 def _extract_phone(text: str) -> str:
+    """本文から代表電話番号を拾う。
+
+    直前が FAX 表記の番号は除外する（架電リストにFAX番号が混ざると、
+    実際に電話をかけて初めて気づくことになるため）。
+    TEL/電話 と明示された番号があればそれを最優先する。
+    """
+    fallback = ""
     for m in PHONE_RE.finditer(text):
         raw = m.group(0)
         digits = re.sub(r"\D", "", raw)
-        if 10 <= len(digits) <= 11:
+        if not (10 <= len(digits) <= 11):
+            continue
+        before = text[max(0, m.start() - 24): m.start()]
+        if FAX_HINT_RE.search(before):
+            continue  # FAX番号は架電先ではない
+        if TEL_HINT_RE.search(before):
             return raw.strip()
-    return ""
+        if not fallback:
+            fallback = raw.strip()
+    return fallback
 
 
 def _extract_address(text: str) -> str:
@@ -177,16 +196,11 @@ def _extract_address(text: str) -> str:
 
 
 def _extract_capital(text: str):
-    m = CAPITAL_RE.search(text)
+    """資本金を円に換算して返す。「1億2,000万円」のような複合表記にも対応する。"""
+    m = re.search(r"資本金[\s:：]*([0-9０-９,，億万兆\.\s]{1,32}?)\s*円", text)
     if not m:
         return None
-    num = float(m.group(1).replace(",", "").replace("，", ""))
-    unit = m.group(2)
-    if unit == "億":
-        num *= 100_000_000
-    elif unit == "万":
-        num *= 10_000
-    return int(num)
+    return _as_yen(m.group(1).strip())
 
 
 def _extract_employees(text: str):
@@ -223,16 +237,18 @@ def extract_company(url: str, html_text: str) -> Company:
 
 
 def _resolve_url(base_url: str, href: str) -> str:
+    """相対URLを絶対URLにする。
+
+    自前の文字列操作だと "https://example.com" + "about" が "https://about"
+    （＝別ホスト）になる事故があるため、標準のurljoinに任せる。
+    """
     href = _html.unescape(href).strip()
-    if href.startswith("http"):
-        return href
-    p = urlparse(base_url)
-    if href.startswith("//"):
-        return f"{p.scheme}:{href}"
-    if href.startswith("/"):
-        return f"{p.scheme}://{p.netloc}{href}"
-    base = base_url.rsplit("/", 1)[0]
-    return f"{base}/{href}"
+    if not href:
+        return ""
+    try:
+        return urljoin(base_url, href)
+    except Exception:
+        return ""
 
 
 def find_profile_url(base_url: str, html_text: str) -> str:
@@ -274,14 +290,30 @@ def normalize_company_name(name: str) -> str:
 
 
 def _name_matches(a: str, b: str) -> bool:
-    """2つの会社名が実質同一かを、正規化後の包含関係でざっくり判定する。
-    検索結果のHPが本当にその会社のものかを確かめる（誤エンリッチ防止）。"""
-    na, nb = normalize_company_name(a), normalize_company_name(b)
+    """2つの会社名が実質同一かを判定する（誤エンリッチ防止）。
+
+    包含だけで判定すると「中央建設」と「中央建設工業」のような別会社を
+    同一と誤認し、他社の電話番号をリストに載せてしまう。そこで
+    「完全一致」または「長い方が短い方＋わずかな差」しか同一と認めない。
+    """
+    # ページタイトル由来の「｜横浜の不動産」のような付帯情報は比較前に落とす
+    def _head(s: str) -> str:
+        return re.split(r"[｜|/／:：\-–—~〜]", s or "", 1)[0]
+
+    na, nb = normalize_company_name(_head(a)), normalize_company_name(_head(b))
     if not na or not nb:
         return False
+    if na == nb:
+        return True
     short, long = (na, nb) if len(na) <= len(nb) else (nb, na)
-    # 短い方が3文字以上かつ長い方に含まれていれば同一とみなす
-    return len(short) >= 3 and short in long
+    if len(short) < 3 or short not in long:
+        return False
+    extra = len(long) - len(short)
+    if extra > 2:
+        return False  # 「工業」「ホールディングス」等が付く別法人の可能性が高い
+    # 支店・営業所のような付加語は同一企業とみなさない
+    tail = long.replace(short, "", 1)
+    return not any(w in tail for w in ("支店", "営業所", "工業", "商事", "興業", "販売"))
 
 
 # 主要な市区（クエリの多様化用。1000件狙いで検索語を増やす）
@@ -498,8 +530,20 @@ class AIExtractor:
         return max(0, self.budget_tokens - self.total_tokens)
 
     @property
+    def budget_yen(self) -> int:
+        """上限トークンを金額に換算した値（Web検索料もこの枠内で判定する）。"""
+        if not self.budget_tokens:
+            return 0
+        pin, pout = MODEL_PRICING.get(self.model, DEFAULT_PRICING)
+        usd = self.budget_tokens * 0.9 / 1_000_000 * pin + self.budget_tokens * 0.1 / 1_000_000 * pout
+        return int(round(usd * self.usd_jpy))
+
+    @property
     def budget_exceeded(self) -> bool:
-        return bool(self.budget_tokens) and self.total_tokens >= self.budget_tokens
+        if not self.budget_tokens:
+            return False
+        # トークンだけでなく実費（Web検索料込み）でも打ち切る
+        return self.total_tokens >= self.budget_tokens or self.cost_yen() >= self.budget_yen
 
     def cost_usd(self) -> float:
         pin, pout = MODEL_PRICING.get(self.model, DEFAULT_PRICING)
@@ -766,8 +810,12 @@ class WebFinder:
 
         async with httpx.AsyncClient(follow_redirects=True) as client:
             async def one(comp):
-                async with sem:
-                    await self._enrich_one(client, comp, ai_extractor)
+                try:
+                    async with sem:
+                        await self._enrich_one(client, comp, ai_extractor)
+                except Exception:
+                    # 1社の失敗で全体（と、そこまでのAI課金分）を失わない
+                    logger.warning("エンリッチ失敗のためこの会社はスキップ: %s", comp.name, exc_info=True)
                 stats.candidates += 1
                 if comp.phone_number:
                     stats.enriched += 1

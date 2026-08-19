@@ -20,6 +20,7 @@ import argparse
 import csv
 import io
 import logging
+import os
 import sys
 import zipfile
 from pathlib import Path
@@ -63,45 +64,59 @@ def nta_row_to_fields(
     """国税庁CSVの1行を会社フィールドの辞書に変換する。対象外の行はNone。
 
     ローカル検索（list_builder.LocalDataSource）が生の全件CSVを直接読むときにも使う。
+    列数が足りない行（末尾の空列が省略されたCSV等）でも例外を出さず、
+    その行だけを見送る（1行の欠損で走査全体が止まらないようにするため）。
     """
     if len(row) < NTA_MIN_COLS:
         return None
-    if latest_only and row[COL_LATEST].strip() != "1":
+
+    def col(idx: int) -> str:
+        return row[idx].strip() if idx < len(row) and row[idx] is not None else ""
+
+    if latest_only and col(COL_LATEST) != "1":
         return None
-    if row[COL_HIHYOJI].strip() == "1":
+    if col(COL_HIHYOJI) == "1":
         return None  # 検索対象除外
-    if not include_closed and row[COL_CLOSE_DATE].strip():
+    if not include_closed and col(COL_CLOSE_DATE):
         return None  # 登記閉鎖済み
-    name = row[COL_NAME].strip()
+    name = col(COL_NAME)
     if not name:
         return None
-    pref = row[COL_PREFECTURE].strip()
+    pref = col(COL_PREFECTURE)
     return {
-        "corporate_number": row[COL_CORPORATE_NUMBER].strip(),
+        "corporate_number": col(COL_CORPORATE_NUMBER),
         "name": name,
         "prefecture": pref,
-        "location": pref + row[COL_CITY].strip() + row[COL_STREET].strip(),
-        "postal_code": _format_postal(row[COL_POSTCODE]),
+        "location": pref + col(COL_CITY) + col(COL_STREET),
+        "postal_code": _format_postal(col(COL_POSTCODE)),
     }
 
 
 def _iter_source_files(src: Path) -> Iterator[Path]:
     """入力（csv / zip / ディレクトリ）から実CSVパスを列挙する。
-    zip はメモリ上で展開せず、呼び出し側が open できるよう一時展開する。"""
+
+    zipは一時ディレクトリに展開して渡し、**使い終わったら必ず削除する**
+    （東京都だけで約1GBあるため、放置するとディスクを食い潰す）。
+    展開はチャンク単位で行い、巨大CSVを丸ごとメモリに載せない。
+    """
     if src.is_dir():
         for p in sorted(src.glob("**/*.csv")):
             yield p
     elif src.suffix.lower() == ".zip":
-        # zip内のcsvを一時ディレクトリに展開して渡す
+        import shutil
         import tempfile
         tmp = Path(tempfile.mkdtemp(prefix="nta_"))
-        with zipfile.ZipFile(src) as zf:
-            for name in zf.namelist():
-                if name.lower().endswith(".csv"):
+        try:
+            with zipfile.ZipFile(src) as zf:
+                for name in zf.namelist():
+                    if not name.lower().endswith(".csv"):
+                        continue
                     out = tmp / Path(name).name
                     with zf.open(name) as zsrc, open(out, "wb") as dst:
-                        dst.write(zsrc.read())
+                        shutil.copyfileobj(zsrc, dst, 1 << 20)
                     yield out
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
     else:
         yield src
 
@@ -150,18 +165,28 @@ def import_nta(
     include_closed: bool = False,
     progress_every: int = 100_000,
 ) -> int:
-    """国税庁CSVを telepy 形式CSVに変換して書き出す。書き出した件数を返す。"""
+    """国税庁CSVを telepy 形式CSVに変換して書き出す。書き出した件数を返す。
+
+    出力は一時ファイルに書いてから最後に差し替える（原子的な置換）。
+    変換が途中で失敗しても、それまで使えていた母集団CSVを壊さないため。
+    """
     out.parent.mkdir(parents=True, exist_ok=True)
+    tmp_out = out.with_name(out.name + ".part")
     count = 0
-    # Excel互換のためBOM付きUTF-8で出力
-    with open(out, "w", encoding="utf-8-sig", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=OUT_COLUMNS)
-        writer.writeheader()
-        for comp in iter_companies(src, prefectures=prefectures, include_closed=include_closed):
-            writer.writerow(comp)
-            count += 1
-            if progress_every and count % progress_every == 0:
-                logger.info("変換中... %s件", f"{count:,}")
+    try:
+        # Excel互換のためBOM付きUTF-8で出力
+        with open(tmp_out, "w", encoding="utf-8-sig", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=OUT_COLUMNS)
+            writer.writeheader()
+            for comp in iter_companies(src, prefectures=prefectures, include_closed=include_closed):
+                writer.writerow(comp)
+                count += 1
+                if progress_every and count % progress_every == 0:
+                    logger.info("変換中... %s件", f"{count:,}")
+        os.replace(tmp_out, out)  # 完成したものだけを本番のファイル名にする
+    except BaseException:
+        tmp_out.unlink(missing_ok=True)
+        raise
     return count
 
 
