@@ -77,6 +77,16 @@ INDUSTRY_KEYWORD_PRESETS = {
 }
 
 
+def prefecture_stem(full: str) -> str:
+    """「東京都」→「東京」のように末尾の都/道/府/県を1文字だけ落とす。
+
+    rstrip("都道府県") だと「京都府」が「京」まで削られ、「京都」で検索しても
+    京都府に当たらなくなる。落とすのは必ず末尾1文字だけにする。
+    """
+    full = (full or "").strip()
+    return full[:-1] if full and full[-1] in "都道府県" else full
+
+
 def normalize_prefecture(name: str) -> Optional[str]:
     """都道府県名（省略形も可）をJISコードに変換する。見つからなければNone。"""
     name = (name or "").strip()
@@ -86,8 +96,7 @@ def normalize_prefecture(name: str) -> Optional[str]:
         return PREFECTURE_CODES[name]
     # 「東京」「神奈川」「大阪」等の省略形に対応
     for full, code in PREFECTURE_CODES.items():
-        stem = full.rstrip("都道府県")
-        if name == stem or name == full:
+        if name == prefecture_stem(full):
             return code
     return None
 
@@ -152,9 +161,18 @@ class Company:
     company_url: str = ""
     phone_number: str = ""  # gBizINFOには無いため空（別途エンリッチ）
     match_reason: str = ""  # なぜリストに入ったか（enriched/keyword/unknown等）
+    # 由来データの性質（表示用ではなく判定用。ファイル単位で変わる）
+    capital_column_available: bool = True  # 元データに資本金の列があったか
+    from_sample_data: bool = False         # 同梱のお試し用データ（架空の会社）か
+
+    # 内部判定用のため、画面や出力には出さない
+    _INTERNAL_FIELDS = ("capital_column_available",)
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        for k in self._INTERNAL_FIELDS:
+            d.pop(k, None)
+        return d
 
 
 # ---------------------------------------------------------------------------
@@ -574,7 +592,11 @@ class LocalDataSource:
                 if key in seen:
                     continue
                 seen.add(key)
-                comp.match_reason = "ローカルCSV一致"
+                # 架空の会社が本物の架電リストに紛れたまま配られないよう、
+                # 行そのものに「お試し用」と書いておく（CSVに出しても残る）。
+                comp.match_reason = (
+                    "お試し用サンプル（架空の会社）" if comp.from_sample_data else "ローカルCSV一致"
+                )
                 results.append(comp)
                 if len(results) >= limit:
                     if progress:
@@ -597,20 +619,40 @@ class LocalDataSource:
             first = next(reader, None)
             if first is None:
                 return
+            is_sample = path.name in self.SAMPLE_FILENAMES
             if looks_like_nta_row(first):
-                # 国税庁 全件CSV: ヘッダが無いので1行目からデータ
+                # 国税庁 全件CSV: ヘッダが無いので1行目からデータ（資本金の列は無い）
                 for row in _chain_first(first, reader):
                     fields = nta_row_to_fields(row)
-                    yield Company(**fields, match_reason="") if fields else None
+                    if not fields:
+                        yield None
+                        continue
+                    yield self._tag_source(Company(**fields, match_reason=""), False, is_sample)
             else:
                 colmap = self._build_colmap(first)
                 self._active_colmap = colmap
-                if colmap.get("capital_stock"):
+                has_capital = bool(colmap.get("capital_stock"))
+                if has_capital:
                     self.data_has_capital = True
                 for row in reader:
-                    yield self._row_to_company(dict(zip(first, row)))
+                    yield self._tag_source(
+                        self._row_to_company(dict(zip(first, row))), has_capital, is_sample
+                    )
         finally:
             f.close()
+
+    @staticmethod
+    def _tag_source(comp: "Company", has_capital: bool, is_sample: bool) -> "Company":
+        """この会社が「資本金の列を持つファイル」由来かを1社ごとに記録する。
+
+        ディレクトリ単位で判定すると、資本金列のあるCSVを1つ足しただけで
+        国税庁データ由来の全社（資本金は未登録）が「資本金不明」として
+        まとめて捨てられ、母集団が消える。ファイル単位で持たせて防ぐ。
+        """
+        if comp is not None:
+            comp.capital_column_available = has_capital
+            comp.from_sample_data = is_sample
+        return comp
 
     def _build_colmap(self, fieldnames) -> dict:
         norm = {}
@@ -721,6 +763,7 @@ class BuildStats:
     ai_budget_hit: bool = False  # 上限に達してAIを打ち切ったか
     ai_model: str = ""
     capital_filter_skipped: bool = False  # 資本金の列が無く絞り込みを適用しなかった
+    using_sample_data: bool = False  # 同梱のお試し用データ（架空の会社）を使った
     demo: bool = False
 
 
@@ -983,21 +1026,24 @@ class ListBuilder:
 
         # 資本金の列が無いデータ（国税庁の全件データ等）に「資本金で厳密に絞る」を
         # そのまま適用すると全社が資本金不明で落ち、必ず0件になる。
-        # 列が無い場合は資本金条件を適用しない（ブラウザ版と同じ挙動に合わせる）。
-        strict_cap_effective = strict_capital and self.local.data_has_capital
+        # 判定は1社ごと（_filter_and_rank）に任せ、ここでは案内文の要否だけ見る。
+        # ディレクトリ単位で判定すると、資本金列のあるCSVを1つ足しただけで
+        # 国税庁データ由来の母集団が丸ごと消えてしまう。
+        has_capital_criteria = criteria.capital_max is not None or criteria.capital_min is not None
         stats.capital_filter_skipped = bool(
             strict_capital
-            and not self.local.data_has_capital
-            and (criteria.capital_max is not None or criteria.capital_min is not None)
+            and has_capital_criteria
+            and any(not c.capital_column_available for c in cand_list)
         )
+        stats.using_sample_data = any(c.from_sample_data for c in cand_list)
         if stats.capital_filter_skipped:
-            logger.info("資本金の列が無いデータのため、資本金の絞り込みは適用しませんでした")
+            logger.info("資本金の列が無いデータの分は、資本金の絞り込みを適用しませんでした")
 
         selected = self._filter_and_rank(
             cand_list,
             criteria,
             include_unknown_employee=include_unknown_employee,
-            exclude_unknown_capital=strict_cap_effective,
+            exclude_unknown_capital=strict_capital,
         )
         stats.matched = len(selected)
         stats.unknown_employee = sum(1 for c in selected if c.employee_number is None)
@@ -1030,8 +1076,14 @@ class ListBuilder:
                     continue
                 if cap_min is not None and c.capital_stock < cap_min:
                     continue
-            elif exclude_unknown_capital and (cap_max is not None or cap_min is not None):
-                # 資本金が未登録の会社を除外（厳密モード）
+            elif (
+                exclude_unknown_capital
+                and (cap_max is not None or cap_min is not None)
+                and c.capital_column_available
+            ):
+                # 資本金が未登録の会社を除外（厳密モード）。
+                # ただし、そもそも資本金の列を持たないデータ（国税庁の全件データ等）
+                # 由来の会社は「未登録」ではなく「取得できないだけ」なので残す。
                 continue
             # 従業員数フィルタ
             if c.employee_number is not None:
@@ -1039,7 +1091,8 @@ class ListBuilder:
                     continue
                 if emp_max is not None and c.employee_number > emp_max:
                     continue
-                c.match_reason = "属性一致（従業員数確認済み）"
+                if not c.from_sample_data:  # お試し用の印は上書きしない
+                    c.match_reason = "属性一致（従業員数確認済み）"
             else:
                 if (emp_min is not None or emp_max is not None) and not include_unknown_employee:
                     continue

@@ -177,6 +177,44 @@ def test_prefecture_config():
     print("✓ 都道府県・自動更新の設定読み取り（略称補完・既定値）")
 
 
+def test_failure_is_recorded_and_visible():
+    """自動更新が失敗したら状態に残り、画面（status）から見える
+
+    黙って失敗し続けると「毎日自動更新のはず」が何ヶ月も古いまま気づけない。
+    """
+    def dead_handler(request):
+        return httpx.Response(503, text="service unavailable")
+
+    async def go():
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(dead_handler),
+            base_url="https://www.houjin-bangou.nta.go.jp",
+        ) as client:
+            return await check_and_update(http_client=client)
+
+    try:
+        asyncio.run(go())
+        raise AssertionError("接続失敗なのに例外が出ていない")
+    except RuntimeError as e:
+        assert "接続できません" in str(e), e
+
+    st = status()
+    assert st["last_error"], "失敗が記録されていない（画面から気づけない）"
+    assert st["consecutive_failures"] == 1, st["consecutive_failures"]
+    assert st["last_checked_at"], st
+
+    # 既に取得済みのファイルは失敗しても残る（＝古いデータで動き続けられる）
+    assert len([i for i in st["items"] if i["file_exists"]]) == 4, st["items"]
+
+    # 復旧したら失敗の記録が消える
+    run_update()
+    st2 = status()
+    assert st2["last_error"] == "", st2["last_error"]
+    assert st2["consecutive_failures"] == 0
+    assert st2["last_success_at"], st2
+    print("✓ 更新失敗を記録して画面に出す（復旧で解除・既存データは保持）")
+
+
 if __name__ == "__main__":
     tests = [
         test_parse_links,
@@ -184,6 +222,7 @@ if __name__ == "__main__":
         test_second_update_skips,
         test_force_redownloads,
         test_status_and_local_search_integration,
+        test_failure_is_recorded_and_visible,
         test_prefecture_config,
     ]
     for t in tests:

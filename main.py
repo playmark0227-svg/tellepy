@@ -19,6 +19,8 @@ from pydantic import BaseModel
 
 from config import load_config, save_config, get_masked_config, sync_env, is_configured
 
+import admin_auth
+
 # 重い外部SDK依存モジュールは遅延インポート（管理画面だけなら不要）
 def _import_call_modules():
     from ai_engine import AIEngine
@@ -51,11 +53,18 @@ active_sessions: dict = {}
 DEFAULT_SCRIPT = SCRIPTS_DIR / "example_client.yaml"
 
 
+# 失敗時の再試行間隔（回線が一時的に落ちていただけなら数分で復帰させ、
+# 恒常的な失敗なら叩き続けない）。最後は通常間隔と同じ1日1回に落ち着く。
+_NTA_RETRY_DELAYS = (5 * 60, 30 * 60, 2 * 3600, 24 * 3600)
+
+
 async def _nta_auto_update_loop():
     """国税庁 全件データを起動時＋1日1回チェックし、新しければ自動で差し替える。"""
     from nta_updater import auto_update_enabled, check_and_update
     await asyncio.sleep(5)  # 起動直後のサーバー立ち上がりを待つ
+    failures = 0
     while True:
+        delay = 24 * 3600  # 通常は1日1回チェック（全件データは月次更新）
         if auto_update_enabled():
             try:
                 result = await check_and_update()
@@ -63,14 +72,28 @@ async def _nta_auto_update_loop():
                     logger.info("国税庁データを更新しました: %s", result["updated"])
                 if result["errors"]:
                     logger.warning("国税庁データ更新の一部が失敗: %s", result["errors"])
+                    failures += 1
+                else:
+                    failures = 0
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
-                logger.warning("国税庁データの自動更新をスキップ（次回再試行）: %s", e)
-        await asyncio.sleep(24 * 3600)  # 1日1回チェック（全件データは月次更新）
+                failures += 1
+                logger.warning("国税庁データの自動更新に失敗（%d回目）: %s", failures, e)
+            if failures:
+                delay = _NTA_RETRY_DELAYS[min(failures - 1, len(_NTA_RETRY_DELAYS) - 1)]
+                logger.info("国税庁データの再試行まで %d 分待ちます", delay // 60)
+        await asyncio.sleep(delay)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("telepy サーバー起動")
+    # uvicorn コマンドから直接起動した場合もここで入口URLが分かるようにする
+    logger.info(
+        "管理画面の入口: %s",
+        admin_auth.bootstrap_url("127.0.0.1", int(os.environ.get("PORT", "8000"))),
+    )
     nta_task = asyncio.create_task(_nta_auto_update_loop())
     yield
     nta_task.cancel()
@@ -90,6 +113,43 @@ app = FastAPI(
 
 # 静的ファイル配信
 app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+
+
+@app.middleware("http")
+async def admin_token_guard(request: Request, call_next):
+    """管理画面・管理APIを合言葉で守る（Twilioのwebhookだけ素通し）。
+
+    Twilio連携のためにngrok等でサーバーを外へ出すと、webhookだけでなく
+    管理画面ごと公開されてしまう。ここで一括して塞ぐ。新しいAPIを足しても
+    自動的に保護される（＝守り忘れが起きない）ように、個別のルートではなく
+    ミドルウェアで判定する。
+    """
+    path = request.url.path
+    if admin_auth.is_open_path(path):
+        return await call_next(request)
+
+    from_query = request.query_params.get(admin_auth.QUERY_NAME, "")
+    ok = (
+        admin_auth.token_matches(request.cookies.get(admin_auth.COOKIE_NAME, ""))
+        or admin_auth.token_matches(request.headers.get(admin_auth.HEADER_NAME, ""))
+        or admin_auth.token_matches(from_query)
+    )
+    if not ok:
+        if path.startswith("/api/"):
+            return JSONResponse(
+                {"detail": "合言葉が必要です。サーバー起動時に表示されたURL（?t=…）から開き直してください。"},
+                status_code=401,
+            )
+        return HTMLResponse(admin_auth.LOCKED_HTML, status_code=401)
+
+    response = await call_next(request)
+    if from_query:
+        # 合言葉つきURLで1回開けば、以降はcookieで通す（URLを毎回貼らなくてよい）
+        response.set_cookie(
+            admin_auth.COOKIE_NAME, admin_auth.get_token(),
+            httponly=True, samesite="lax", max_age=30 * 24 * 3600, path="/",
+        )
+    return response
 
 
 # =====================================================
@@ -477,6 +537,9 @@ async def api_list_local_status():
         "configured": len(files) > 0,
         "data_dir": str(src.data_dir),
         "files": [{"name": p.name, "size": p.stat().st_size} for p in files],
+        # 実データがまだ無く、同梱のお試し用データ（架空の会社7社）しか無い状態。
+        # 気づかないまま架空の電話番号に架電させないため、画面に出す。
+        "sample_only": bool(getattr(src, "using_sample_only", False)),
     }
 
 
@@ -751,4 +814,9 @@ if __name__ == "__main__":
     # 管理画面にはAPIキーの設定画面があり認証が無いため、既定では同じPCからのみ
     # 接続できるようにする。社内LANに公開したい場合だけ HOST=0.0.0.0 を指定する。
     host = os.environ.get("HOST", "127.0.0.1")
+    # 合言葉つきの入口URLを起動時に必ず出す（これを開かないと管理画面に入れない）
+    print("\n" + "=" * 68)
+    print("  管理画面はこのURLから開いてください（合言葉つき・1回開けばOK）:")
+    print("  " + admin_auth.bootstrap_url(host, port))
+    print("=" * 68 + "\n", flush=True)
     uvicorn.run("main:app", host=host, port=port, reload=reload)

@@ -26,7 +26,7 @@ import zipfile
 from pathlib import Path
 from typing import Iterable, Iterator, Optional
 
-from list_builder import PREFECTURE_CODES, _open_text_auto
+from list_builder import PREFECTURE_CODES, _open_text_auto, prefecture_stem
 
 logger = logging.getLogger(__name__)
 
@@ -201,7 +201,7 @@ def _parse_prefectures(arg: str) -> list[str]:
             out.append(name)
         else:
             for full in PREFECTURE_CODES:
-                if full.rstrip("都道府県") == name:
+                if prefecture_stem(full) == name:
                     out.append(full)
                     break
             else:

@@ -279,7 +279,11 @@ const ListBuilder = {
       const st = await api('GET', '/list/local-status');
       const el = document.getElementById('lb-local-status');
       if (!el) return;
-      if (st.configured) {
+      if (st.sample_only) {
+        // 架空の会社7社しか無い状態。本物と思って架電させないよう強めに出す。
+        el.textContent = `⚠ お試し用のサンプルデータ（架空の会社7社）しかありません。この状態で作ったリストは架電に使えません。${st.data_dir}/ に実データのCSVを置くか、「国税庁データを今すぐ更新」を実行してください。`;
+        el.style.color = 'var(--warning, #d97706)';
+      } else if (st.configured) {
         const total = st.files.reduce((a, f) => a + f.size, 0);
         el.textContent = `ローカルCSV: ${st.files.length}ファイル検出（${st.files.map(f => f.name).join(', ')} / 計${(total / 1048576).toFixed(1)}MB）`;
         el.style.color = 'var(--success)';
@@ -310,6 +314,14 @@ const ListBuilder = {
         el.style.color = 'var(--gray-400)';
       }
       text += st.auto_update ? ' / 自動更新ON（毎日チェック・月次データを自動反映）' : ' / 自動更新OFF';
+      // 自動更新が黙って失敗し続けていると「最新のはず」が何ヶ月も古いままになる
+      if (st.last_error) {
+        const n = st.consecutive_failures || 1;
+        text += ` / ⚠ 前回の自動更新に失敗（${n}回連続）: ${st.last_error} — 「今すぐ更新」で再試行できます`;
+        el.style.color = 'var(--warning, #d97706)';
+      } else if (st.last_checked_at) {
+        text += ` / 最終確認 ${st.last_checked_at.replace('T', ' ')}`;
+      }
       el.textContent = text;
     } catch (e) { /* ignore */ }
   },
@@ -526,8 +538,11 @@ const ListBuilder = {
     if (stats.demo) {
       msgs.push('⚠ これはデモデータです。Web自動探索を使うには検索モードを「Web自動探索」にしてください。');
     } else {
+      if (stats.using_sample_data) {
+        msgs.push('⚠ このリストは同梱のお試し用サンプル（架空の会社・架空の電話番号）です。実在しないため架電に使えません。国税庁データを取得するか、data/ に実データのCSVを置いてから作り直してください。');
+      }
       if (stats.capital_filter_skipped) {
-        msgs.push('ℹ このデータには資本金の列が無いため、資本金の条件は適用していません（国税庁データは社名・所在地のみ）。資本金で絞りたい場合はgBizINFOの一括CSVをご利用ください。');
+        msgs.push('ℹ 資本金の列を持たないデータ（国税庁データは社名・所在地のみ）が含まれるため、その分は資本金の条件を適用していません。資本金で厳密に絞りたい場合はgBizINFOの一括CSVをご利用ください。');
       }
       if (exhausted && target && job.count < target) {
         msgs.push(`⚠ ${src}で見つかったのは ${job.count} 社でした（目標 ${target} 社に到達前に候補を出し切りました）。地域・業種のキーワードを増やすと件数が伸びます。`);

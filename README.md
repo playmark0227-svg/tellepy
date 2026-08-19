@@ -240,6 +240,7 @@ cp .env.example .env
 | `FIREBASE_PROJECT_ID` | FirebaseプロジェクトID | Firebase Console |
 | `SLACK_WEBHOOK_URL` | Slack Webhook URL | [Slack API](https://api.slack.com/messaging/webhooks) |
 | `GBIZINFO_API_TOKEN` | gBizINFO APIトークン（リスト作成機能用・無料） | [gBizINFO API利用申請](https://info.gbiz.go.jp/hojin/various_registration/form) |
+| `ADMIN_TOKEN` | 管理画面・管理APIの合言葉（未設定なら自動生成） | 任意の文字列。`data/.admin_token` に自動保存されます |
 
 ### 3. Firebaseの設定
 
@@ -250,9 +251,9 @@ cp .env.example .env
 
 Firestoreには `call_logs` コレクションが自動作成されます（テーブル定義不要）。
 
-### 4. ngrokの設定（ローカル開発用）
+### 4. ngrokの設定（Twilio連携をする場合のみ）
 
-Twilioからのwebhookを受け取るために、ngrokでトンネルを作成します。
+Twilioからのwebhookを受け取るには、サーバーを外から見える場所に置く必要があります。
 
 ```bash
 ngrok http 8000
@@ -264,22 +265,56 @@ ngrok http 8000
 BASE_URL=https://xxxx-xxxx.ngrok.io
 ```
 
+> **⚠ ngrokはサーバー全体をインターネットに公開します。**
+> URLを知られると、APIキーの設定画面も架電の実行も顧客リストの書き出しも
+> 誰でも触れてしまう状態になります。telepyはこれを防ぐため、
+> **管理画面と管理APIを合言葉（アクセストークン）で保護しています**（次項）。
+> Twilioが叩く `/twilio/*`・`/audio/*`・`/health` だけが合言葉なしで通ります。
+>
+> リスト作成機能しか使わない場合、ngrokは**不要**です。立てないでください。
+
 ### 5. サーバーの起動
 
 ```bash
 python main.py
 ```
 
-サーバーが `http://localhost:8000` で起動します。
+サーバーが `http://localhost:8000` で起動し、ターミナルに**合言葉つきの入口URL**が表示されます。
+
+```
+====================================================================
+  管理画面はこのURLから開いてください（合言葉つき・1回開けばOK）:
+  http://127.0.0.1:8000/?t=xxxxxxxxxxxxxxxxxxxxxxxx
+====================================================================
+```
+
+このURLを1回ブラウザで開けば、以降はcookieで通るので毎回貼り直す必要はありません。
+
+- 合言葉は初回起動時に自動生成され、`data/.admin_token` に保存されます（再起動しても同じ）
+- 自分で決めたい場合は環境変数 `ADMIN_TOKEN` を設定してから起動してください
+- コマンドラインから叩く場合は `-H "X-Admin-Token: 合言葉"` を付けます
+
+```bash
+curl -H "X-Admin-Token: $(cat data/.admin_token)" http://localhost:8000/api/status
+```
 
 ## 使い方
+
+画面から使う場合は、起動時に表示された `?t=…` つきURLを開くだけです。
+以下のようにコマンドから叩く場合は、合言葉のヘッダを添えてください
+（`/twilio/*` と `/health` を除くすべての経路で必要です）。
+
+```bash
+export TELEPY_TOKEN=$(cat data/.admin_token)   # ADMIN_TOKEN を自分で決めた場合はその値
+```
 
 ### 単体架電
 
 ```bash
-curl -X POST "http://localhost:8000/call/initiate" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "phone_number=+819012345678"
+curl -X POST "http://localhost:8000/api/call/initiate" \
+  -H "X-Admin-Token: $TELEPY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"phone_number": "+819012345678"}'
 ```
 
 ### CSV一括架電
@@ -292,14 +327,15 @@ phone_number,company_name
 ```
 
 ```bash
-curl -X POST "http://localhost:8000/call/batch" \
+curl -X POST "http://localhost:8000/api/call/batch-json" \
+  -H "X-Admin-Token: $TELEPY_TOKEN" \
   -F "file=@call_list.csv"
 ```
 
 ### アクティブセッション確認
 
 ```bash
-curl http://localhost:8000/sessions
+curl -H "X-Admin-Token: $TELEPY_TOKEN" http://localhost:8000/sessions
 ```
 
 ### ヘルスチェック
@@ -327,13 +363,17 @@ farewell: "終話文..."
 
 架電時にスクリプトパスを指定:
 ```bash
-curl -X POST "http://localhost:8000/call/initiate" \
-  -d "phone_number=+819012345678&script_path=scripts/custom_client.yaml"
+curl -X POST "http://localhost:8000/api/call/initiate" \
+  -H "X-Admin-Token: $TELEPY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"phone_number": "+819012345678", "script_path": "scripts/custom_client.yaml"}'
 ```
 
 ## APIドキュメント
 
-サーバー起動後、以下にアクセスするとSwagger UIが利用できます。
+サーバー起動後、以下にアクセスするとSwagger UIが利用できます
+（管理APIと同じく合言葉が必要です。`?t=…` つきのURLで一度画面を開いていれば、
+cookieでそのまま開けます）。
 
 ```
 http://localhost:8000/docs

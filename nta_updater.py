@@ -25,7 +25,7 @@ from typing import Optional
 import httpx
 
 from corp_importer import import_nta
-from list_builder import DATA_DIR, PREFECTURE_CODES
+from list_builder import DATA_DIR, PREFECTURE_CODES, prefecture_stem
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ def configured_prefectures() -> list[str]:
             out.append(name)
         else:
             for full in PREFECTURE_CODES:
-                if full.rstrip("都道府県") == name:
+                if prefecture_stem(full) == name:
                     out.append(full)
                     break
     return out or list(DEFAULT_PREFECTURES)
@@ -116,6 +116,33 @@ async def _download_to(client: httpx.AsyncClient, url: str, dst: Path, progress=
 _update_lock = asyncio.Lock()
 
 
+def _summarize_errors(errors: list) -> str:
+    if not errors:
+        return ""
+    head = errors[0]
+    msg = f"{head.get('prefecture', '')}: {head.get('error', '')}".strip(": ")
+    return msg if len(errors) == 1 else f"{msg} ほか{len(errors) - 1}件"
+
+
+def _record_check(error: str = "") -> None:
+    """最後にいつ確認して、成功したか失敗したかを残す（画面表示・再試行間隔用）。"""
+    state = load_state()
+    meta = dict(state.get("_meta") or {})
+    now = datetime.now().isoformat(timespec="seconds")
+    meta["last_checked_at"] = now
+    meta["last_error"] = error
+    if error:
+        meta["consecutive_failures"] = int(meta.get("consecutive_failures", 0)) + 1
+    else:
+        meta["consecutive_failures"] = 0
+        meta["last_success_at"] = now
+    state["_meta"] = meta
+    try:
+        save_state(state)
+    except Exception:
+        logger.warning("更新状況の記録に失敗しました", exc_info=True)
+
+
 def is_updating() -> bool:
     """更新処理が実行中か（画面の二重起動防止に使う）。"""
     return _update_lock.locked()
@@ -136,9 +163,17 @@ async def check_and_update(
     Returns: {"updated": [...], "skipped": [...], "errors": [...], "state": {...}}
     """
     async with _update_lock:
-        return await _check_and_update_locked(
-            prefectures, force=force, progress=progress, http_client=http_client
-        )
+        try:
+            result = await _check_and_update_locked(
+                prefectures, force=force, progress=progress, http_client=http_client
+            )
+        except Exception as e:
+            # 失敗を握りつぶすと「自動更新のはずが何ヶ月も古いまま」に誰も気づけない。
+            # 画面から見えるように必ず記録してから投げ直す。
+            _record_check(str(e))
+            raise
+        _record_check(_summarize_errors(result["errors"]))
+        return result
 
 
 async def _check_and_update_locked(
@@ -216,7 +251,7 @@ def status() -> dict:
     state = load_state()
     items = []
     for pref in prefs:
-        cur = state.get(pref, {})
+        cur = state.get(pref) or {}
         f = Path(cur["file"]) if cur.get("file") else None
         items.append({
             "prefecture": pref,
@@ -225,8 +260,14 @@ def status() -> dict:
             "updated_at": cur.get("updated_at"),
             "file_exists": bool(f and f.exists()),
         })
+    meta = state.get("_meta") or {}
     return {
         "auto_update": auto_update_enabled(),
         "prefectures": prefs,
         "items": items,
+        "last_checked_at": meta.get("last_checked_at"),
+        "last_success_at": meta.get("last_success_at"),
+        "last_error": meta.get("last_error") or "",
+        "consecutive_failures": int(meta.get("consecutive_failures", 0) or 0),
+        "updating": is_updating(),
     }

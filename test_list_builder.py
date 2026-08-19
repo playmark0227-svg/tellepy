@@ -247,6 +247,77 @@ def test_capital_filter_skipped_when_no_capital_column():
     print("✓ 資本金の列が無いデータでは資本金条件を適用しない（0件化を防止）")
 
 
+def test_capital_filter_is_per_file_not_per_directory():
+    """資本金列のあるCSVを1つ足しても、国税庁データ由来の母集団が消えない
+
+    判定をディレクトリ単位でやると、gBizINFOのCSVを1本置いた瞬間に
+    「資本金の列がある」と見なされ、資本金未登録の国税庁データ数百万社が
+    まとめて捨てられる（＝ファイルを足したのにリストが激減する）。
+    """
+    def nta_row(cn, name, city):
+        row = [""] * 30
+        row[1] = cn; row[6] = name; row[8] = "301"
+        row[9] = "東京都"; row[10] = city; row[15] = "1000001"; row[23] = "1"
+        return ",".join(row)
+
+    criteria = SearchCriteria(
+        name_keywords=["工務店"], prefectures=["東京都"],
+        capital_max=10_000_000, target_count=1000,
+    )
+    with tempfile.TemporaryDirectory() as d:
+        _write_csv(d, "nta_13.csv", "\n".join([
+            nta_row("1010001000001", "あい工務店", "港区"),
+            nta_row("1010001000002", "かき工務店", "港区"),
+        ]) + "\n")
+        build = lambda: asyncio.run(ListBuilder(local=LocalDataSource(data_dir=d)).build(
+            criteria, mode="local", include_unknown_employee=True, strict_capital=True,
+        ))
+        before = sorted(c.name for c in build()[0])
+        assert before == ["あい工務店", "かき工務店"], before
+
+        # 資本金の列を持つCSVを1本追加（資本金5,000万円＝条件オーバーの1社）
+        _write_csv(d, "gbiz.csv", (
+            "法人番号,法人名,所在地,資本金,従業員数\n"
+            "9000000000001,ビッグ工務店株式会社,東京都港区2-2-2,50000000,300\n"
+        ))
+        after, stats = build()
+        names = sorted(c.name for c in after)
+        assert names == before, f"ファイルを足したら母集団が消えた: {names}"
+        assert "ビッグ工務店株式会社" not in names, "資本金列のある行は条件どおり除外されるべき"
+        assert stats.capital_filter_skipped is True
+    print("✓ 資本金の絞り込みはファイル単位で判定（混在ディレクトリで母集団が消えない）")
+
+
+def test_sample_data_is_marked_as_fake():
+    """お試し用データしか無いときは、行にも統計にも『架空』と分かる印が付く"""
+    with tempfile.TemporaryDirectory() as d:
+        _write_csv(d, "sample_companies.csv", SAMPLE_CSV)
+        criteria = SearchCriteria(
+            name_keywords=["工務店"], prefectures=["東京都"], target_count=10,
+        )
+        companies, stats = asyncio.run(
+            ListBuilder(local=LocalDataSource(data_dir=d)).build(
+                criteria, mode="local", include_unknown_employee=True,
+            )
+        )
+        assert companies, "お試し用データが検索できていない"
+        assert stats.using_sample_data is True, "お試し用データを使ったのに統計に出ない"
+        assert all(c.from_sample_data for c in companies)
+        assert all("お試し" in c.match_reason for c in companies), \
+            [c.match_reason for c in companies]
+
+        # 実データがあるときは印が付かない（本物のリストを汚さない）
+        _write_csv(d, "real.csv", SAMPLE_CSV)
+        companies2, stats2 = asyncio.run(
+            ListBuilder(local=LocalDataSource(data_dir=d)).build(
+                criteria, mode="local", include_unknown_employee=True,
+            )
+        )
+        assert stats2.using_sample_data is False
+        assert not any(c.from_sample_data for c in companies2)
+    print("✓ お試し用データは行・統計の両方で『架空』と分かる")
+
+
 def test_local_progress_reports_scanned_rows():
     """進捗が「走査行数」で刻まれる（該当0件のまま固まって見えないように）"""
     rows = ["法人名,所在地"]
@@ -538,6 +609,8 @@ if __name__ == "__main__":
         test_heuristic_kyoto_not_dropped,
         test_local_dedupes_across_files,
         test_capital_filter_skipped_when_no_capital_column,
+        test_capital_filter_is_per_file_not_per_directory,
+        test_sample_data_is_marked_as_fake,
         test_local_progress_reports_scanned_rows,
         test_resolve_mode,
         test_api_bot_reaches_target,

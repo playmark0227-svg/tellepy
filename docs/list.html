@@ -1314,7 +1314,7 @@ var LB = {
     var notes = [];
     if (this.companies.length === 0) notes.push('該当0件でした。社名キーワードや都道府県、文字コードの指定を見直してみてください。');
     if (!out.dataHasCapital && (criteria.capital_max != null || criteria.capital_min != null))
-      notes.push('このCSVには資本金の列が無いため、資本金の条件は適用していません（国税庁データは社名・所在地のみ）。');
+      notes.push('資本金の列を持たないCSV（国税庁データは社名・所在地のみ）が含まれるため、その分は資本金の条件を適用していません。');
     if (unknownEmp > 0) notes.push('従業員数が不明な会社が含まれます（そのCSVに従業員数の列が無い/空の場合）。');
     var hasPhone = this.companies.some(function(c) { return c.phone_number; });
     if (!hasPhone && this.companies.length > 0) notes.push('このCSVには電話番号がありません。下の「⑤ HP・電話番号をAIで補完」で埋められます（ローカル版なら無料補完も可）。');
