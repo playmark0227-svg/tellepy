@@ -445,7 +445,14 @@ const ListBuilder = {
       strict_capital: document.getElementById('lb-strict-cap').checked,
       ai_fallback: document.getElementById('lb-ai-fallback').checked,
       ai_model: (document.getElementById('lb-ai-model') || {}).value || '',
-      ai_budget_tokens: parseInt((document.getElementById('lb-ai-budget') || {}).value, 10) || 0,
+      // 空欄なら null を送り、サーバー側の AI_BUDGET_TOKENS を活かす
+      // （0 を送ると「無制限」の意味になり、.env の上限が無視される）
+      ai_budget_tokens: (function () {
+        var raw = ((document.getElementById('lb-ai-budget') || {}).value || '').trim();
+        if (raw === '') return null;
+        var n = parseInt(raw, 10);
+        return isNaN(n) ? null : n;
+      })(),
       detail_budget: 1500,
     };
     try {

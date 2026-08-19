@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import re
+import zlib
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Awaitable, Callable, Optional
@@ -92,6 +93,15 @@ REGION_ALIASES = {
     "北陸": ["新潟県", "富山県", "石川県", "福井県"],
     "四国": ["徳島県", "香川県", "愛媛県", "高知県"],
 }
+
+
+def _spread_key(s: str) -> int:
+    """文字列を安定した整数に散らす（同じ入力なら常に同じ順＝結果は再現する）。
+
+    並べ替えの最後の決め手を社名にすると五十音順の先頭に偏るため、
+    母集団全体からまんべんなく選ばれるようにするために使う。
+    """
+    return zlib.crc32((s or "").encode("utf-8"))
 
 
 def prefecture_stem(full: str) -> str:
@@ -1149,7 +1159,10 @@ class ListBuilder:
             emp_in_range = 2
         has_capital = 0 if c.capital_stock is not None else 1
         has_url = 0 if c.company_url else 1
-        return (emp_in_range, has_capital, has_url, c.name)
+        # 最後を社名にすると、属性が全部同じデータ（国税庁データは従業員数も
+        # 資本金もURLも無い）では並びが完全に五十音順になり、「あ」で始まる
+        # 会社ばかりの同じ1000件が毎回出る。安定ハッシュで母集団全体に散らす。
+        return (emp_in_range, has_capital, has_url, _spread_key(c.corporate_number or c.name))
 
 
 # ---------------------------------------------------------------------------

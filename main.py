@@ -391,7 +391,10 @@ class BuildRequest(BaseModel):
     strict_capital: bool = True
     ai_fallback: bool = True  # 迷った会社だけAIで確認（キー未設定なら自動で無効）
     ai_model: str = ""        # 空ならHaiku 4.5（最安）。例: claude-sonnet-5
-    ai_budget_tokens: int = 0  # AIに使うトークンの上限（0=無制限）。到達で自動停止
+    # AIに使うトークンの上限。到達したらAI呼び出しを自動停止する。
+    # 省略（None）なら環境変数 AI_BUDGET_TOKENS を使う。0 を明示したときだけ無制限。
+    # ここを 0 既定にすると .env の上限が常に無視され、上限なしで課金される。
+    ai_budget_tokens: Optional[int] = None
     demo: bool = False
 
 

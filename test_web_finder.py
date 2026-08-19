@@ -229,6 +229,25 @@ def test_fax_tel_link_is_not_called():
     print("✓ FAXがtel:リンクでも架電先にしない（本物のTELを拾う）")
 
 
+def test_budget_env_is_used_when_not_specified():
+    """上限を指定しなければ .env の AI_BUDGET_TOKENS が効く
+
+    ここが 0 既定だと「0＝無制限」と解釈され、.env に上限を書いていても
+    上限なしで課金される（READMEの「上限を超えて課金されない」が嘘になる）。
+    """
+    import os
+    from web_finder import AIExtractor
+    os.environ["AI_BUDGET_TOKENS"] = "200000"
+    try:
+        assert AIExtractor(api_key="dummy", budget_tokens=None).budget_tokens == 200000
+        # 0 を明示したときだけ無制限
+        assert AIExtractor(api_key="dummy", budget_tokens=0).budget_tokens == 0
+        assert AIExtractor(api_key="dummy", budget_tokens=5000).budget_tokens == 5000
+    finally:
+        os.environ.pop("AI_BUDGET_TOKENS", None)
+    print("✓ 上限未指定なら環境変数の上限を使う（0指定のときだけ無制限）")
+
+
 def test_normalize_phone():
     """架電できない文字列を電話番号カラムに入れない（そのままTwilioに渡るため）"""
     # 見やすい表記はそのまま活かす
@@ -616,6 +635,7 @@ if __name__ == "__main__":
         test_tel_link_phone,
         test_fax_tel_link_is_not_called,
         test_normalize_phone,
+        test_budget_env_is_used_when_not_specified,
         test_find_contact_url,
         test_normalize_company_name,
         test_name_matches,

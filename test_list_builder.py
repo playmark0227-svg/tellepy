@@ -344,6 +344,31 @@ def test_sample_data_is_marked_as_fake():
     print("✓ お試し用データは行・統計の両方で『架空』と分かる")
 
 
+def test_selection_is_not_biased_to_alphabetical_head():
+    """属性が全部同じデータでも、選ばれる会社が五十音の先頭に偏らない
+
+    国税庁データは従業員数も資本金もURLも無いので、並べ替えの決め手が社名だけに
+    なると「あ」で始まる会社ばかりの同じリストが毎回できあがる。
+    """
+    builder = ListBuilder()
+    criteria = SearchCriteria(target_count=100)
+    names = "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほ"
+    companies = [
+        Company(corporate_number=str(1000000000000 + i), name=f"{names[i % len(names)]}{i}工務店")
+        for i in range(2000)
+    ]
+    kept = builder._filter_and_rank(companies, criteria, include_unknown_employee=True)
+    picked = [int(c.corporate_number) - 1000000000000 for c in kept[:100]]
+    buckets = [0] * 5
+    for i in picked:
+        buckets[min(4, i // 400)] += 1
+    assert min(buckets) >= 8, f"母集団の一部に偏っている: {buckets}"
+    # 同じ入力なら同じ結果（再現性は保つ）
+    kept2 = builder._filter_and_rank(list(companies), criteria, include_unknown_employee=True)
+    assert [c.name for c in kept2[:100]] == [c.name for c in kept[:100]]
+    print(f"✓ 選定が五十音順に偏らない（5等分ごとの件数 {buckets}・結果は再現する）")
+
+
 def test_local_progress_reports_scanned_rows():
     """進捗が「走査行数」で刻まれる（該当0件のまま固まって見えないように）"""
     rows = ["法人名,所在地"]
@@ -639,6 +664,7 @@ if __name__ == "__main__":
         test_capital_filter_skipped_when_no_capital_column,
         test_capital_filter_is_per_file_not_per_directory,
         test_sample_data_is_marked_as_fake,
+        test_selection_is_not_biased_to_alphabetical_head,
         test_local_progress_reports_scanned_rows,
         test_resolve_mode,
         test_api_bot_reaches_target,

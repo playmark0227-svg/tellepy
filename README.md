@@ -127,7 +127,8 @@ GREETING → QUALIFYING → PITCHING → CLOSING → HANDOFF（アポ確定）
 AIに使うトークンの上限を決められます。**上限に達した時点でAI呼び出しを自動停止**し、
 残りの会社は無料ロジックの結果のみでリストに載ります（リスト作成自体は止まりません）。
 
-- 設定: 管理画面の「AIトークン上限」または環境変数 `AI_BUDGET_TOKENS`（`0` で無制限）
+- 設定: 管理画面の「AIトークン上限」または環境変数 `AI_BUDGET_TOKENS`（`0` で無制限）。
+  優先順位は **画面の入力欄 > `AI_BUDGET_TOKENS` > 無制限**。欄を空にすると `.env` の値が使われます
 - モデル: 「AIモデル」または `AI_MODEL`（既定 `claude-haiku-4-5`。高精度にしたい場合は `claude-sonnet-5`）
 - 上限判定は**実際に使ったトークン**（APIのusage）で行い、並列実行でもすり抜けないよう
   実行前に見積り分を確保します。**設定した上限を超えて課金されることはありません**
@@ -378,4 +379,18 @@ cookieでそのまま開けます）。
 
 ```
 http://localhost:8000/docs
+```
+
+## テスト
+
+外部ネットワークに一切つながずに実行できます（APIも国税庁サイトも模擬）。
+
+```bash
+python test_list_builder.py   # 条件抽出・絞り込み・CSV・ローカル検索
+python test_web_finder.py     # Web探索・抽出・AIフォールバック・トークン上限
+python test_corp_importer.py  # 国税庁 全件CSVの変換
+python test_nta_updater.py    # 自動ダウンロード・更新状態の記録
+python test_api_auth.py       # 管理APIの合言葉認証（Twilioの経路は開いたまま）
+
+node test_docs_list.mjs       # ブラウザ版(docs/list.html)のロジック（Playwright・任意）
 ```
