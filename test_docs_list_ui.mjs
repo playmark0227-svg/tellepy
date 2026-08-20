@@ -78,10 +78,18 @@ const check = (n, c, d) => { if (!c) throw new Error(`${n} 失敗: ${d}`); ok.pu
 await page.goto(BASE + '/list.html');
 await page.waitForTimeout(600);
 
+// まずスクリプトが生きているかを見る。文法エラーを、あとの検査の
+// 分かりにくいタイムアウトとしてではなく、その場で報告させる。
+if (errors.length) throw new Error('読み込み時点でJSエラー: ' + errors.join(' / '));
+const alive = await page.evaluate(() => [typeof LB, typeof TP, typeof CX].join(','));
+check('スクリプトが最後まで読み込める', alive === 'object,object,object', alive);
+
 // ① 起動画面: CSVもAPIキーも要求しない
 const firstView = await page.textContent('#feed');
 check('起動画面が依頼文から始まる', /お客様からの依頼文/.test(firstView), '');
 check('起動時にAPIキーを要求しない', !/sk-ant/.test(await page.textContent('#tp-hello')), '');
+await page.waitForFunction(
+  () => !/確認しています/.test(document.getElementById('tp-seed-desc').textContent), null, { timeout: 8000 });
 check('内蔵データの状態を名乗る', /内蔵データはまだ入っていません|内蔵済み/.test(await page.textContent('#tp-seed-desc')),
   await page.textContent('#tp-seed-desc'));
 
@@ -96,9 +104,14 @@ check('読み取りをAIと呼ばない', (await page.textContent('#tp-badge-par
   await page.textContent('#tp-badge-parse'));
 check('社名キーワードがチップで見える', (await page.$$('#tp-kw-chips .kw-chip')).length >= 5, '');
 
-// ③ データ未設置なら、データの棚が出る
-await page.waitForSelector('#tp-data-msg:not(.hidden)', { timeout: 5000 });
-check('データが無いときは棚を出す', await page.isVisible('#tp-data-msg'), '');
+// ③ データが無くても「どこから探しますか」とは聞かない。探し方を自分で出す。
+await page.waitForSelector('#tp-go:not(.hidden)', { timeout: 8000 });
+check('データが無くても探し先を質問しない', !(await page.isVisible('#tp-data-msg')), '');
+const plan = await page.textContent('#tp-go-text');
+check('代わりに探し方を提案する', /AIにWebから探させる|AIがWebを検索/.test(plan), plan);
+check('無料の道も同時に示す', /無料/.test(plan + await page.textContent('#tp-go-alt')), plan);
+check('ボタンが探索を指す', /AIに探させる/.test(await page.textContent('#tp-go-label')),
+  await page.textContent('#tp-go-label'));
 
 // ④ zipが開けないときは従来どおり案内（偽zipで確認）
 await page.setInputFiles('#lb-file', B + '/dummy.zip');
@@ -116,6 +129,10 @@ check('従業員数が効かないことを走る前に言う', /従業員数[\s
 check('電話番号が無いことを走る前に言う', /電話番号[\s\S]*?入っていません/.test(pf), pf);
 check('✗には必ず対処ボタンがある', (await page.$$('.pf-ng .btn')).length >= 2, '');
 check('聞き返しが出る', await page.isVisible('#tp-ask'), '');
+check('データを渡したら無料の探索に切り替わる',
+  /この条件で探す/.test(await page.textContent('#tp-go-label')) &&
+  /通信も課金もありません/.test(await page.textContent('#tp-go-text')),
+  await page.textContent('#tp-go-label'));
 
 // ⑥ 聞き返しに答えると条件が実際に変わる
 await page.click('text=不明も含めて集める（おすすめ）');
@@ -198,6 +215,110 @@ await page.evaluate(() => LB.download('detail'));
 await page.waitForTimeout(300);
 check('見本のダウンロードを試みたら理由を出す',
   /見本はダウンロードできません/.test(await page.textContent('#toasts')), await page.textContent('#toasts'));
+
+// ⑩-2 AIによる探索: Anthropicの応答を差し替えて、判定と組み立てだけを確かめる
+await page.evaluate(() => TP.expand(true));
+await page.waitForTimeout(400);
+const discovery = await page.evaluate(async () => {
+  // 実際のAPIは叩かず、応答だけ差し替える（課金しないでロジックを試す）
+  const real = window.fetch;
+  let round = 0;
+  const reply = (companies) => ({
+    ok: true,
+    json: async () => ({
+      content: [{ type: 'text', text: '見つかりました。\n' + JSON.stringify({ companies }) }],
+      usage: { input_tokens: 5000, output_tokens: 800, server_tool_use: { web_search_requests: 3 } }
+    })
+  });
+  window.fetch = async (url, opt) => {
+    if (String(url).indexOf('api.anthropic.com') === -1) return real(url, opt);
+    round++;
+    if (round === 1) return reply([
+      // 業種名を社名に含まない会社（落としてはいけない）
+      { name: '鮨いち', location: '大阪府大阪市北区1-1', prefecture: '大阪府',
+        phone_number: '06-1111-2222', company_url: 'https://sushi-ichi.example.jp',
+        source_url: 'https://sushi-ichi.example.jp/about' },
+      // 出どころが無い（実在を確かめられないので捨てる）
+      { name: '出どころ不明亭', location: '大阪府大阪市', prefecture: '大阪府',
+        phone_number: '06-9999-9999', company_url: '', source_url: '' },
+      // エリア外（条件に合わないので捨てる）
+      { name: '東京らーめん', location: '東京都新宿区', prefecture: '東京都',
+        phone_number: '03-1111-1111', company_url: 'https://ramen.example.jp',
+        source_url: 'https://ramen.example.jp' },
+      { name: '株式会社味の里', location: '大阪府堺市2-2', prefecture: '大阪府',
+        phone_number: '', company_url: 'https://ajinosato.example.jp',
+        source_url: 'https://ajinosato.example.jp' }
+    ]);
+    if (round === 2) return reply([
+      // 1回目と同じ会社（法人格の表記ゆれ込み。重複として落とす）
+      { name: '鮨いち', location: '大阪府大阪市北区1-1', prefecture: '大阪府',
+        phone_number: '06-1111-2222', company_url: 'https://sushi-ichi.example.jp',
+        source_url: 'https://sushi-ichi.example.jp' },
+      { name: '有限会社 味の里', location: '大阪府堺市2-2', prefecture: '大阪府',
+        phone_number: '', company_url: 'https://ajinosato.example.jp',
+        source_url: 'https://ajinosato.example.jp' }
+    ]);
+    return reply([]);   // 以降は新規なし → 打ち切りへ
+  };
+
+  document.getElementById('lb-ai-key').value = 'sk-ant-test-not-a-real-key';
+  document.getElementById('lb-industries').value = '飲食店';
+  document.getElementById('lb-keywords').value = '';
+  document.getElementById('lb-prefectures').value = '大阪府';
+  document.getElementById('lb-count').value = '50';
+  document.getElementById('lb-ai-budget').value = '0';
+  LB._files = null; LB._aiCalls = 0; LB._aiIn = 0; LB._aiOut = 0; LB._aiSearches = 0;
+  await LB.discover();
+  window.fetch = real;
+  return {
+    names: LB.companies.map(c => c.name),
+    reasons: [...new Set(LB.companies.map(c => c.match_reason))],
+    calls: LB._aiCalls
+  };
+});
+check('業種名を社名に含まない会社を落とさない', discovery.names.includes('鮨いち'),
+  JSON.stringify(discovery));
+check('出どころを示せない会社は採用しない', !discovery.names.includes('出どころ不明亭'),
+  JSON.stringify(discovery));
+check('エリア外は採用しない', !discovery.names.includes('東京らーめん'), JSON.stringify(discovery));
+check('表記ゆれの重複をまとめる', discovery.names.length === 2, JSON.stringify(discovery));
+check('新しい会社が出なくなったら止める', discovery.calls <= 4, 'calls=' + discovery.calls);
+check('探索由来だと分かる印を付ける',
+  discovery.reasons.length === 1 && /探索/.test(discovery.reasons[0]), JSON.stringify(discovery.reasons));
+await page.waitForTimeout(600);
+check('探索結果にも納品ボードが出る', await page.isVisible('#lb-result-card'), '');
+check('探索は自動判定だと結果に明記', /AIがWebを検索して見つけた会社/.test(await page.textContent('#lb-note')),
+  await page.textContent('#lb-note'));
+const dRecipe = await page.textContent('#tp-recipe-body');
+check('作り方に「手元の名簿は使っていない」と書く', /手元の名簿は使っていません/.test(dRecipe), dRecipe);
+check('探索行のチップが「AIが探索」', (await page.$$('.why.is-ai')).length > 0, '');
+
+// ⑩-3 辞書に無い業種（飲食店）でも、依頼文をAIに渡して探せる
+const unlisted = await page.evaluate(async () => {
+  const real = window.fetch;
+  let sent = null;
+  window.fetch = async (url, opt) => {
+    if (String(url).indexOf('api.anthropic.com') === -1) return real(url, opt);
+    sent = JSON.parse(opt.body);
+    return { ok: true, json: async () => ({
+      content: [{ type: 'text', text: JSON.stringify({ companies: [] }) }],
+      usage: { input_tokens: 100, output_tokens: 10, server_tool_use: { web_search_requests: 1 } } }) };
+  };
+  document.getElementById('lb-inquiry').value = '美容室のリストを大阪府で50件お願いします。';
+  LB.parse();
+  await new Promise(r => setTimeout(r, 1200));
+  const c = LB.collectCriteria();
+  await LB.discover();
+  window.fetch = real;
+  return {
+    industriesEmpty: c.industries.length === 0 && c.name_keywords.length === 0,
+    promptHasInquiry: /美容室/.test(sent ? sent.messages[0].content : ''),
+    planLabel: document.getElementById('tp-go-label').textContent
+  };
+});
+check('辞書に無い業種は条件が空になる（前提の確認）', unlisted.industriesEmpty, JSON.stringify(unlisted));
+check('それでも依頼文をAIに渡して探せる', unlisted.promptHasInquiry, JSON.stringify(unlisted));
+check('その場合ボタンもAI探索を指す', /AIに探させる/.test(unlisted.planLabel), unlisted.planLabel);
 
 // ⑪ 料金シート
 await page.click('#tp-cost-chip');

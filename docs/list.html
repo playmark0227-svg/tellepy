@@ -704,9 +704,9 @@
           <div class="btn-row" style="margin-top:12px;">
             <button class="btn btn-go btn-lg" id="lb-run" onclick="LB.build()">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-14 9V3z"/></svg>
-              <span id="tp-go-label">このまま探す</span>
+              <span id="tp-go-label">この条件で探す</span>
             </button>
-            <button class="btn btn-quiet" onclick="TP.showDataCard(true)">別のデータを使う</button>
+            <span id="tp-go-alt"></span>
           </div>
         </div>
       </div>
@@ -718,11 +718,11 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
       </span>
       <div class="msg-body">
-        <p id="tp-data-lead">どのデータから探しますか。</p>
+        <p id="tp-data-lead">無料でやる場合は、探すもとになる名簿だけ渡してください。あとはこちらでやります。</p>
         <section class="msg-card" id="lb-data-card">
           <div class="tiles" style="margin-bottom:14px;">
             <button type="button" class="tile" id="tp-tile-seed" onclick="CX.useSeed()">
-              <span class="tile-t">内蔵データで探す</span>
+              <span class="tile-t">内蔵データを使う</span>
               <span class="tile-d" id="tp-tile-seed-d">無料・いますぐ</span>
             </button>
             <button type="button" class="tile" onclick="document.getElementById('lb-file').click()">
@@ -1534,6 +1534,136 @@ async function aiLookupCompany(apiKey, comp, model) {
 }
 
 
+/* AIに条件を渡して、条件に合う会社そのものを探させる（Web検索つき）。
+   Anthropicのweb_searchはAnthropic側のサーバーで走るため、
+   ブラウザから直接呼んでもCORSに当たらない。手元にデータが1件も無くても、
+   これだけで「社名・所在地・電話番号」まで揃ったリストが作れる。
+
+   でっち上げ対策として、
+     - 検索で実在を確認できた会社だけを返させる
+     - 出典URLを必ず持たせる（無い会社は捨てる）
+     - 画面には「AIが探索 · 未検証」と明示する
+   の3つを常に効かせている。 */
+function normalizeName(n) {
+  return String(n || '')
+    .replace(/株式会社|有限会社|合同会社|\(株\)|（株）|\(有\)|（有）/g, '')
+    .replace(/[\s\u3000・,，.。]/g, '')
+    .trim();
+}
+
+async function aiDiscoverCompanies(apiKey, criteria, model, exclude, want, inquiry) {
+  model = model || "claude-haiku-4-5";
+  var area = (criteria.prefectures || []).join("・") || "日本全国";
+  // 業種は辞書に無いことがある（飲食店・美容室・整骨院…）。
+  // その場合はAIに依頼文そのものを読ませる。ここは辞書ではなくAIの仕事。
+  var kinds = (criteria.industries || []).join("・") ||
+              (criteria.name_keywords || []).slice(0, 4).join("・") || "";
+  var cond = [];
+  if (criteria.employee_min != null || criteria.employee_max != null) {
+    cond.push("従業員数 " + (criteria.employee_min == null ? "" : criteria.employee_min) +
+              "〜" + (criteria.employee_max == null ? "" : criteria.employee_max) + "名程度");
+  }
+  if (criteria.capital_max != null) cond.push("資本金 " + Number(criteria.capital_max).toLocaleString() + "円以下");
+  var skip = (exclude || []).slice(-60);
+
+  var body = {
+    model: model,
+    max_tokens: 4000,
+    system:
+      "あなたは日本企業の営業リストを作る調査員です。Web検索を使って、条件に合う実在の会社を探してください。\n" +
+      "厳守事項:\n" +
+      "1. 検索結果で実在を確認できた会社だけを挙げる。心当たりや推測で社名を作らない。\n" +
+      "2. 各社に、その情報の出どころになったURL（source_url）を必ず付ける。付けられない会社は挙げない。\n" +
+      "3. 電話番号は、その会社の公式サイトに実際に掲載されていたものだけを書く。分からなければ空文字にする。\n" +
+      "   ポータル・電話帳・求人サイトの番号は使わない。\n" +
+      "4. 見つからなければ空の配列を返す。数合わせをしない。\n" +
+      "回答の最後に、次の形のJSONだけの行を必ず出力すること:\n" +
+      '{"companies":[{"name":"","location":"","prefecture":"","phone_number":"","company_url":"","source_url":""}]}',
+    tools: [{ type: (AI_SEARCH_TOOL[model] || "web_search_20250305"), name: "web_search", max_uses: 5 }],
+    messages: [{
+      role: "user",
+      content:
+        (inquiry ? "お客様からの依頼文:\n" + String(inquiry).slice(0, 1200) + "\n\n" : "") +
+        (kinds ? "業種: " + kinds + "\n" : "業種: 上の依頼文から読み取ってください\n") +
+        "エリア: " + area + "\n" +
+        (cond.length ? "規模: " + cond.join(" / ") + "\n" : "") +
+        "欲しい件数: " + (want || 8) + "社\n" +
+        (skip.length ? "すでに挙がっているので除外する会社: " + skip.join("、") + "\n" : "") +
+        "条件に合う会社を、公式サイトを手がかりに探して一覧にしてください。"
+    }]
+  };
+
+  var res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    var msg = "";
+    try { msg = (await res.json()).error.message || ""; } catch (e) { /* ignore */ }
+    var err = new Error("API " + res.status + (msg ? ": " + msg : ""));
+    err.status = res.status;
+    throw err;
+  }
+  var data = await res.json();
+  var text = "";
+  var blocks = data.content || [];
+  for (var i = 0; i < blocks.length; i++) if (blocks[i].type === "text") text += blocks[i].text + "\n";
+  var u = data.usage || {};
+  var usage = {
+    input: (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0),
+    output: u.output_tokens || 0,
+    searches: (u.server_tool_use && u.server_tool_use.web_search_requests) || 0
+  };
+
+  // 出力の末尾から companies を含むJSONを探す（前置きの文章に強くする）
+  var found = [];
+  var start = text.lastIndexOf('{"companies"');
+  if (start < 0) start = text.lastIndexOf('{ "companies"');
+  if (start >= 0) {
+    var depth = 0;
+    for (var k = start; k < text.length; k++) {
+      if (text[k] === "{") depth++;
+      else if (text[k] === "}") { depth--; if (depth === 0) { 
+        try { found = (JSON.parse(text.slice(start, k + 1)).companies) || []; } catch (e) { found = []; }
+        break;
+      } }
+    }
+  }
+
+  var out = [];
+  for (var j = 0; j < found.length; j++) {
+    var c = found[j] || {};
+    var name = String(c.name || "").trim();
+    // 出典が無いものは、実在を確かめられないので採らない
+    if (!name || !String(c.source_url || c.company_url || "").trim()) continue;
+    var loc = String(c.location || "").trim();
+    out.push({
+      corporate_number: "",
+      name: name,
+      prefecture: String(c.prefecture || "").trim() || prefectureFromLocation(loc),
+      location: loc,
+      postal_code: "",
+      capital_stock: null,
+      employee_number: null,
+      industry: "",
+      founding_year: null,
+      representative_name: "",
+      company_url: String(c.company_url || "").trim(),
+      phone_number: String(c.phone_number || "").trim(),
+      source_url: String(c.source_url || c.company_url || "").trim(),
+      match_reason: "AIが探索 · 未検証"
+    });
+  }
+  return { companies: out, usage: usage };
+}
+
+
 /* ===========================================================================
    LB — 画面から検索ロジックを呼ぶ係。
    上の純ロジック（CSVパーサ・絞り込み・Anthropic呼び出し）には手を触れない。
@@ -1761,8 +1891,12 @@ var LB = {
     var statItems = [
       ['架電できる', withPhone.toLocaleString()],
       ['取得件数', n.toLocaleString()],
-      ['走査行数', out.scanned.toLocaleString()],
-      [out.truncated ? '該当（打ち切り）' : '該当総数', out.total.toLocaleString()]
+      out.discovered
+        ? ['AIの探索', this._aiCalls.toLocaleString() + ' 回']
+        : ['走査行数', out.scanned.toLocaleString()],
+      out.discovered
+        ? ['Web検索', this._aiSearches.toLocaleString() + ' 回']
+        : [out.truncated ? '該当（打ち切り）' : '該当総数', out.total.toLocaleString()]
     ];
     if (this._aiCalls > 0) {
       statItems.push(['AIの呼び出し', this._aiCalls.toLocaleString() + ' 回']);
@@ -1783,7 +1917,16 @@ var LB = {
       notes.push(['warn', '候補が ' + out.total.toLocaleString() + '社 に達した時点で走査を打ち切りました。実際に条件へ当てはまる会社はこれより多い可能性があります。もっと必要なら目標件数を増やしてください。']);
     if (unknownEmp > 0 && n > 0)
       notes.push(['', '従業員数が分からない会社が ' + unknownEmp.toLocaleString() + '社 含まれます。使ったデータに従業員数の列が無いためです。']);
-    if (withPhone === 0 && n > 0 && !sample)
+    if (out.discovered && n > 0) {
+      notes.push(['warn', 'この ' + n.toLocaleString() + '社は、AIがWebを検索して見つけた会社です。実在と電話番号は自動判定なので、誤りが混ざることがあります。各行を開くと出どころのURLが見られます。']);
+      if (out.stoppedBy === 'dry')
+        notes.push(['', '新しい会社が出てこなくなったので止めました。エリアや業種を広げると、まだ見つかる可能性があります。']);
+      if (out.stoppedBy === 'budget')
+        notes.push(['warn', '設定した上限に達したので止めました。上限を上げると続きから増やせます。']);
+      if (out.stoppedBy === 'user')
+        notes.push(['', 'お止めになった時点までの結果です。']);
+    }
+    if (withPhone === 0 && n > 0 && !sample && !out.discovered)
       notes.push(['warn', 'この時点では1社も架電できません。国税庁のデータに電話番号が入っていないためです。下の「電話番号を調べる」で埋められます。']);
     document.getElementById('lb-note').innerHTML = notes.map(function(p) {
       return '<li class="' + (p[0] === 'warn' ? 'is-warn' : '') + '">' + esc(p[1]) + '</li>';
@@ -1793,6 +1936,7 @@ var LB = {
     var rows = this.companies.slice(0, PREVIEW);
     document.getElementById('lb-tbody').innerHTML = rows.map(function(c, i) {
       var why = sample ? ['is-sample', '見本']
+        : /探索/.test(c.match_reason || '') ? ['is-ai', 'AIが探索 · 未検証']
         : /AI/.test(c.match_reason || '') ? ['is-ai', 'AIが特定 · 未検証']
         : c.employee_number != null ? ['is-strong', '属性まで確認済み']
         : ['', '社名・地域一致'];
@@ -1812,6 +1956,7 @@ var LB = {
         '<li>' + esc(TP.whyMatched(c, criteria)) + '</li>' +
         '<li>' + esc(c.match_reason || '選定理由の記録なし') + '</li>' +
         (c.company_url ? '<li>公式サイト: ' + esc(c.company_url) + '</li>' : '') +
+        (c.source_url && c.source_url !== c.company_url ? '<li>出どころ: ' + esc(c.source_url) + '</li>' : '') +
         (/AI/.test(c.match_reason || '') ? '<li>この番号は自動判定です。誤りが混ざることがあります。上のURLで確認できます。</li>' : '') +
       '</ul></div></div></td></tr>';
     }).join('');
@@ -1826,6 +1971,101 @@ var LB = {
   },
 
   aiStop: function() { this._aiAbort = true; },
+
+  /* 手元にデータが無くても、AIに条件を渡して会社そのものを探させる。
+     目標件数に届くか、上限に達するか、新しい会社が出なくなるまで繰り返す。 */
+  discover: async function () {
+    var criteria = this.collectCriteria();
+    var inquiry = (document.getElementById('lb-inquiry').value || '').trim();
+    // 辞書に無い業種でも、依頼文が残っていればAIが読めるので止めない
+    if (criteria.name_keywords.length === 0 && criteria.industries.length === 0 && !inquiry) {
+      toast('業種または社名キーワードを指定してください', 'error'); return;
+    }
+    var apiKey = (document.getElementById('lb-ai-key').value || '').trim();
+    if (!apiKey) { TP.askForKey(); return; }
+    if (apiKey.indexOf('sk-ant-') !== 0) { toast('APIキーの形式が正しくないようです（sk-ant-で始まります）', 'error'); return; }
+    localStorage.setItem('telepy_anthropic_key', apiKey);
+
+    var model = document.getElementById('lb-ai-model').value;
+    var budget = Math.max(0, parseInt(document.getElementById('lb-ai-budget').value, 10) || 0);
+    var budgetYen = budget ? aiCostYen(model, budget * 0.9, budget * 0.1, 0) : 0;
+    var target = Number(criteria.target_count || 100);
+
+    this._sampleRun = false;
+    this._aiAbort = false;
+    this._aiModel = model;
+    this.companies = [];
+    var seen = {}, self = this, round = 0, dry = 0, budgetHit = false;
+
+    document.getElementById('lb-result-card').classList.add('hidden');
+    document.getElementById('lb-progress-card').classList.remove('hidden');
+    document.getElementById('lb-run').disabled = true;
+    document.getElementById('lb-ai-stop').classList.remove('hidden');
+    TP.scrollTo('lb-progress-card');
+
+    var progress = function (note) {
+      document.getElementById('lb-progress-text').textContent =
+        'AIがWebを検索して探しています... ' + self.companies.length + ' / ' + target + ' 社' +
+        (note ? '（' + note + '）' : '');
+      var cost = aiCostYen(model, self._aiIn, self._aiOut, self._aiSearches);
+      self._aiCostYen = cost;
+      TP.setSpend(cost);
+    };
+    progress('');
+
+    try {
+      // 新しい会社が2回続けて出なければ、それ以上は掘れないと判断して止める
+      while (!this._aiAbort && this.companies.length < target && dry < 2 && round < 60) {
+        if (budget) {
+          var per = this._aiCalls > 0 ? this._aiTokens() / this._aiCalls : 6000;
+          var perSearch = this._aiCalls > 0 ? this._aiSearches / this._aiCalls : 3;
+          var projected = aiCostYen(model, this._aiIn + per * 0.85, this._aiOut + per * 0.15,
+                                    this._aiSearches + perSearch);
+          if (projected > budgetYen) { budgetHit = true; break; }
+        }
+        round++;
+        var want = Math.min(10, target - this.companies.length);
+        var r = await aiDiscoverCompanies(apiKey, criteria, model,
+                                          Object.keys(seen), want, inquiry);
+        this._aiCalls++;
+        if (r.usage) {
+          this._aiIn += r.usage.input; this._aiOut += r.usage.output; this._aiSearches += r.usage.searches;
+        }
+        var fresh = 0;
+        for (var i = 0; i < r.companies.length; i++) {
+          var c = r.companies[i];
+          var key = normalizeName(c.name);
+          if (!key || seen[key]) continue;
+          // 社名キーワードでは絞らない。AIには業種そのものを伝えてあるので、
+          // 「鮨いち」のように業種名を社名に含まない会社を落としてしまう。
+          if (criteria.prefectures.length && c.prefecture &&
+              criteria.prefectures.indexOf(c.prefecture) === -1) continue;
+          seen[key] = 1;
+          this.companies.push(c);
+          fresh++;
+          TP.logDiscovery(c);
+          if (this.companies.length >= target) break;
+        }
+        dry = fresh ? 0 : dry + 1;
+        progress(fresh ? '今回 ' + fresh + '社' : '新しい会社が見つかりませんでした');
+      }
+    } catch (e) {
+      toast('探索に失敗しました: ' + e.message, 'error');
+    } finally {
+      document.getElementById('lb-progress-card').classList.add('hidden');
+      document.getElementById('lb-run').disabled = false;
+      document.getElementById('lb-ai-stop').classList.add('hidden');
+    }
+
+    var out = {
+      scanned: 0, total: this.companies.length, truncated: false,
+      dataHasCapital: false, unmatchedFiles: [], discovered: true,
+      stoppedBy: budgetHit ? 'budget' : this._aiAbort ? 'user' : dry >= 2 ? 'dry' : 'target'
+    };
+    this.renderResult(criteria, out);
+    if (budgetHit) toast('上限に達したので止めました（実費 ¥' + this._aiCostYen.toLocaleString() + '）');
+  },
+
 
   aiEnrich: async function() {
     if (!this.companies.length) { toast('先にリストを作成してください', 'error'); return; }
@@ -2286,10 +2526,10 @@ var TP = {
       self.renderChips();
       self.renderAiParseRow();
       self.scrollTo('lb-criteria-card');
-      // データが決まっていれば診断へ、決まっていなければデータの棚へ
+      // 「どこから探すか」は聞かない。使えるものを自分で選んで走れる状態にする。
       if (LB._files && LB._files.length) self.readyToRun();
       else if (CX.seed) CX.useSeed();
-      else self.showDataCard(true);
+      else self.readyToRun();
     }, Math.min(lines.length * 90 + 260, 900));
   },
 
@@ -2344,7 +2584,24 @@ var TP = {
 
   /* ---- 事前診断：走る前に、効かない条件を宣告する ---- */
   readyToRun: async function () {
-    if (!LB._files || !LB._files.length) { this.showDataCard(true); return; }
+    var c0 = LB.collectCriteria();
+    if (!LB._files || !LB._files.length) {
+      // データが無い＝行き止まり、ではない。AIに探させる道があるので、そちらを出す。
+      document.getElementById('tp-preflight-wrap').classList.add('hidden');
+      document.getElementById('tp-preflight-why').classList.add('hidden');
+      document.getElementById('tp-ask').classList.add('hidden');
+      var go0 = document.getElementById('tp-go');
+      var plan0 = this.plan();
+      document.getElementById('tp-go-text').innerHTML = plan0.lead;
+      document.getElementById('tp-go-label').textContent =
+        plan0.label.replace('{n}', Number(c0.target_count || 100).toLocaleString());
+      document.getElementById('lb-run').setAttribute('onclick', plan0.action);
+      document.getElementById('tp-go-alt').innerHTML = plan0.alt || '';
+      go0.classList.remove('hidden');
+      go0.classList.add('reveal');
+      this.scrollTo('tp-go');
+      return;
+    }
     if (!this._shape) this._shape = await CX.inspect(LB._files[0]);
     var c = LB.collectCriteria();
     var s = this._shape;
@@ -2400,14 +2657,87 @@ var TP = {
 
     var go = document.getElementById('tp-go');
     var target = Number(c.target_count || 100);
-    document.getElementById('tp-go-text').textContent = CX.seedLoaded
-      ? '内蔵データで足ります。このまま探しますか？'
-      : '準備できました。このまま探しますか？';
-    document.getElementById('tp-go-label').textContent = 'このまま探す（' + target.toLocaleString() + '件）';
+    var plan = this.plan();
+    document.getElementById('tp-go-text').innerHTML = plan.lead;
+    document.getElementById('tp-go-label').textContent = plan.label.replace('{n}', target.toLocaleString());
+    document.getElementById('lb-run').setAttribute('onclick', plan.action);
+    document.getElementById('tp-go-alt').innerHTML = plan.alt || '';
     go.classList.remove('hidden');
     go.classList.add('reveal');
     this.showDataCard(false);
     this.scrollTo('tp-go');
+  },
+
+  /* いま何を使って探すかを、こちらで決める。利用者に選ばせない。
+       ① 手元にデータがある      → それで探す（無料）
+       ② 内蔵データがある        → それで探す（無料）
+       ③ APIキーがある           → AIにWebから探させる（有料・金額を先に出す）
+       ④ どれも無い              → 鍵を入れてもらうか、無料の道を案内する */
+  plan: function () {
+    var c = LB.collectCriteria();
+    var target = Number(c.target_count || 100);
+    var hasWords = c.name_keywords.length > 0 || c.industries.length > 0;
+    var hasInquiry = !!(document.getElementById('lb-inquiry').value || '').trim();
+    var hasFiles = !!(LB._files && LB._files.length);
+    var hasKey = false;
+    try { hasKey = !!(document.getElementById('lb-ai-key').value || localStorage.getItem('telepy_anthropic_key')); } catch (e) {}
+
+    if (hasFiles || CX.seedLoaded) {
+      var src = LB._sampleRun ? '見本データ'
+        : CX.seedLoaded ? '内蔵データ（' + esc(String((CX.seed || {}).label || '')) + '）'
+        : esc((LB._files || []).map(function (f) { return f.name; }).join(' / '));
+      if (!hasWords) {
+        return {
+          mode: 'local',
+          lead: '<strong>' + src + '</strong> は名簿なので、社名に含まれる言葉が要ります。' +
+                '「' + esc(((document.getElementById('lb-inquiry').value || '').trim().slice(0, 12)) || 'ご希望の業種') +
+                '」のような言葉が名簿に無い業種は、AIにWebから探させるほうが確実です。',
+          label: 'AIに探させる（{n}件）',
+          action: 'LB.discover()',
+          alt: '<button class="btn btn-quiet" onclick="TP.backToCriteria()">社名に含まれる言葉を自分で入れる</button>'
+        };
+      }
+      return {
+        mode: 'local',
+        lead: '<strong>' + src + '</strong> から探します。この端末の中だけで動くので、通信も課金もありません。',
+        label: 'この条件で探す（{n}件）',
+        action: 'LB.build()',
+        alt: hasKey
+          ? '<button class="btn btn-quiet" onclick="LB.discover()">手元のデータを使わず、AIにWebから探させる（有料）</button>'
+          : ''
+      };
+    }
+    var model = (document.getElementById('lb-ai-model') || {}).value || 'claude-haiku-4-5';
+    var per = aiCostYen(model, 6000, 900, 3) / 8;   // 1社あたりの概算
+    var est = Math.round(per * target);
+    if (hasKey) {
+      return {
+        mode: 'ai',
+        lead: '手元にデータが無いので、<strong>AIがWebを検索して会社そのものを探します</strong>。' +
+              '社名・所在地・電話番号まで一度に集めます。概算 <strong>≒ ¥' + est.toLocaleString() + '</strong>' +
+              '（' + target.toLocaleString() + '社ぶん）。上限に達したら自動で止まります。',
+        label: 'AIに探させる（{n}件・≒ ¥' + est.toLocaleString() + '）',
+        action: 'LB.discover()',
+        alt: '<button class="btn btn-quiet" onclick="TP.showDataCard(true)">無料でやりたい（公的データを使う）</button><button class="btn btn-quiet" onclick="TP.openSheet(\'price\')">無料で自動探索する方法</button>'
+      };
+    }
+    return {
+      mode: 'none',
+      lead: '探し方はふたつあります。<strong>AIにWebから探させる</strong>（APIキーが要ります・概算 ≒ ¥' +
+            est.toLocaleString() + '）か、<strong>無料の公的データを渡す</strong>（zipのままで大丈夫です）か。',
+      label: 'AIに探させる（{n}件・≒ ¥' + est.toLocaleString() + '）',
+      action: 'LB.discover()',
+      alt: '<button class="btn btn-quiet" onclick="TP.showDataCard(true)">無料でやりたい（公的データを使う）</button><button class="btn btn-quiet" onclick="TP.openSheet(\'price\')">無料で自動探索する方法</button>'
+    };
+  },
+
+  /* APIキーが要るのに無いときは、設定を開いてその場で入れてもらう */
+  askForKey: function () {
+    document.getElementById('lb-ai-card').classList.remove('hidden');
+    document.getElementById('tp-ai-settings').open = true;
+    this.scrollTo('lb-ai-card');
+    document.getElementById('lb-ai-key').focus();
+    toast('AIに探させるには Anthropic APIキーが要ります（無料でやるなら「公的データを使う」）', 'error');
   },
   answer: function (kind) {
     if (kind === 'include') {
@@ -2453,6 +2783,22 @@ var TP = {
     var src = LB._sampleRun ? '同梱の見本データ（架空の会社）'
       : CX.seedLoaded && CX.seed ? (CX.seed.source + '（' + CX.seed.label + '）')
       : (LB._files || []).map(function (f) { return f.name; }).join(' / ');
+    if (out.discovered) {
+      var got = LB.companies.filter(function (c) { return c.phone_number; }).length;
+      document.getElementById('tp-recipe-body').innerHTML = [
+        '出所：AIによるWeb検索。手元の名簿は使っていません。',
+        '条件：' + ((criteria.industries || []).join('・') || (criteria.name_keywords || []).slice(0, 4).join('・') ||
+                    '依頼文から読み取り') +
+          '／' + (criteria.prefectures.length ? criteria.prefectures.join('・') : 'エリア指定なし') +
+          '／目標' + Number(criteria.target_count).toLocaleString() + '件',
+        '探索：' + (LB._aiModel || '') + ' に ' + LB._aiCalls + '回問い合わせ、Web検索 ' +
+          LB._aiSearches + '回。実費 ¥' + (LB._aiCostYen || 0).toLocaleString() + '。',
+        '確からしさ：出どころのURLを示せた会社だけを残しています。実在と電話番号は自動判定であり、人手では確認していません。',
+        '分かっていないこと：' + (LB.companies.length - got).toLocaleString() +
+          '社は電話番号が取れませんでした。資本金・従業員数はこの方法では分かりません。'
+      ].map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('');
+      return;
+    }
     var items = [
       '出所：' + src + '。絞り込みはすべてこの端末の中で実行しました。',
       '条件：社名に「' + (criteria.name_keywords || []).join('・') + '」のいずれかを含む／' +
@@ -2594,6 +2940,17 @@ var TP = {
     meter.firstElementChild.style.width = pct + '%';
     meter.classList.toggle('is-hot', pct > 80);
   },
+  /* AIが1社見つけるたびに、その場で名前を出す（待ち時間を成果に変える） */
+  logDiscovery: function (c) {
+    var ul = document.getElementById('tp-worklog');
+    ul.classList.remove('hidden');
+    document.getElementById('lb-ai-card').classList.remove('hidden');
+    var li = document.createElement('li');
+    li.innerHTML = '<b>' + esc(c.name) + '</b> — ' + esc(c.prefecture || c.location || '') +
+      (c.phone_number ? ' / ' + esc(String(c.phone_number).replace(/\d{4}$/, '****')) : ' / 電話番号は未取得');
+    ul.insertBefore(li, ul.firstChild);
+    while (ul.children.length > 8) ul.removeChild(ul.lastChild);
+  },
   clearWorklog: function () { document.getElementById('tp-worklog').innerHTML = ''; this._logCount = 0; },
   logWork: function (i, total, comp, failed) {
     var ul = document.getElementById('tp-worklog');
@@ -2652,8 +3009,12 @@ var TP = {
       '<div class="paid"><span class="tag">従量</span><div class="amt">¥3〜40 <span style="font-size:13px;color:var(--muted)">/ 社</span></div>' +
       '<p>電話番号と公式サイトを1社ずつ調べる工程だけ。あなたの Anthropic APIキーで直接課金され、上限を決めれば自動で止まります。</p></div></div>' +
       '<h4>いま使った分</h4><p>今日の利用 ¥' + Math.round(this._spendYen).toLocaleString() + '</p>' +
-      '<h4>安く済ませたい場合</h4>' +
-      '<p>手元で <code>python main.py</code> を起動すると、無料のWeb検索で大半を埋めて、迷った会社だけAIに確認します（1,000件で ¥300〜1,500）。ブラウザだけでは外部サイトを直接読めない仕様（CORS）のため、無料の巡回はPC側が担当します。</p>';
+      '<h4>無料で自動探索する方法</h4>' +
+      '<p>手元で <code>python main.py</code> を起動し、検索モードを<strong>「Web自動探索」</strong>にすると、' +
+      '無料の検索エンジン（DuckDuckGo）で条件に合う会社のホームページを自分で探しに行きます。' +
+      '<strong>データを1つも用意せず、1円もかけずに</strong>、社名・住所・電話番号まで集まります。</p>' +
+      '<p>このブラウザ版で同じことをすると有料になるのは、ブラウザから外部サイトを直接読めない仕様（CORS）のためです。' +
+      'その制約を越える手段が、いまのところ Anthropic のWeb検索しかありません。</p>';
   },
   copyShareLink: function () {
     var c = LB.collectCriteria();
