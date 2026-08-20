@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#F3F5F9" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0E1420" media="(prefers-color-scheme: dark)">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%232D54D8'/%3E%3Cpath d='M4 13c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2' stroke='white' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3Cpath d='M4 17.5c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2' stroke='%237FE0D5' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+  <meta name="theme-color" content="#FBF9F5" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#131110" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' fill='%23FBF9F5'/%3E%3Cpath d='M3 6.5h18M3 12h18M3 17.5h11' stroke='%23A6402A' stroke-width='1.6'/%3E%3Ccircle cx='19.5' cy='17.5' r='2.6' fill='%23A6402A'/%3E%3C/svg%3E">
   <title>telepy — 依頼文を貼れば、架電リストになる</title>
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="telepy">
@@ -17,252 +17,274 @@
   <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="telepy — 依頼文を貼れば、架電リストになる">
-  <meta name="twitter:description" content="依頼文をそのまま貼るだけ。条件に合う日本企業をこの端末の中で探します。電話番号だけは、AIが1社ずつ調べます。名簿づくりはずっと無料。">
+  <meta name="twitter:description" content="依頼文をそのまま貼るだけ。条件に合う日本企業をこの端末の中で探します。電話番号だけは、AIが1社ずつ調べます。">
   <meta name="twitter:image" content="https://playmark0227-svg.github.io/tellepy/ogp.png">
-  <meta name="description" content="依頼文を貼るだけ。国税庁の全件データ（無料）から条件に合う会社を集め、電話番号までAIで補完する架電リスト作成ツール。すべてPC内で処理します。">
   <script>
-    document.documentElement.classList.add('js');
     (function () {
       try {
         var t = localStorage.getItem('telepy_theme');
-        if (t !== 'light' && t !== 'dark') t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        if (t !== 'light' && t !== 'dark') {
+          t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
         document.documentElement.setAttribute('data-theme', t);
       } catch (e) { document.documentElement.setAttribute('data-theme', 'light'); }
+      document.documentElement.className = 'js';
     })();
   </script>
   <style>
+    /* list.html と同じ意匠。紙・墨・朱の三色、罫線で区切り、影は落とさない。 */
     :root {
-      --font: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", "Yu Gothic", Meiryo, sans-serif;
-      --bg: #F3F5F9; --surface: #FFFFFF; --surface2: #EDF0F6;
-      --primary: #2D54D8; --primary-hover: #2143BE; --on-primary: #FFFFFF;
-      --accent: #0E9A8C; --accent-strong: #0B7C71;
-      --text: #182031; --muted: #586274; --border: #E0E5EE;
-      --success: #12855A; --warning: #B5730B; --danger: #C63636;
-      --primary-soft: color-mix(in srgb, var(--primary) 8%, var(--surface));
-      --accent-soft: color-mix(in srgb, var(--accent) 12%, var(--surface));
-      --ring: 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent);
-      --sh-sm: 0 1px 2px rgba(20,28,48,.06);
-      --sh-md: 0 4px 16px -4px rgba(20,28,48,.10);
-      --sh-lg: 0 12px 40px -12px rgba(20,28,48,.18);
-      --card-inset: none;
-      --r-sm: 8px; --r-md: 12px; --r-lg: 18px;
-      --ease: cubic-bezier(.22,.61,.36,1); --ease-quick: cubic-bezier(.4,0,.2,1);
+      --sans: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "BIZ UDPGothic",
+              "Noto Sans JP", "Yu Gothic UI", "Yu Gothic", Meiryo, system-ui, sans-serif;
+      /* 明朝の並び順は Windows での読みやすさで決めている。
+         Yu Mincho は画面だと線が細く痩せて見えるため、線幅が安定している
+         BIZ UD明朝（Windows 10 1809以降に同梱）を先に置く。 */
+      --serif: "Hiragino Mincho ProN", "Hiragino Mincho Pro", "BIZ UDPMincho", "BIZ UDMincho",
+               "Yu Mincho", YuMincho, "Noto Serif JP", "Times New Roman", serif;
+      --mono: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --paper: #FBF9F5; --surface: #FFFFFF; --sunk: #F4F1EA;
+      --ink: #191612; --ink-2: #58524A; --ink-3: #8B8376;
+      --rule: #E4DFD4; --rule-2: #CFC8B9;
+      --seal: #A6402A; --seal-2: #8C3422; --seal-tint: #F6ECE8;
+      --good: #2E6A4C; --warn: #8A6212;
+      --btn-face: #191612; --btn-text: #FBF9F5;
+      --ease: cubic-bezier(.2,.8,.2,1);
       color-scheme: light;
     }
     :root[data-theme="dark"] {
-      --bg: #0E1420; --surface: #161E2C; --surface2: #1E2839;
-      --primary: #5B82F0; --primary-hover: #7597F4; --on-primary: #0E1420;
-      --accent: #3BC7B8; --accent-strong: #7FE0D5;
-      --text: #E7EBF3; --muted: #9BA7BD; --border: #2A3448;
-      --success: #34C77B; --warning: #E0A340; --danger: #F0655C;
-      --primary-soft: color-mix(in srgb, var(--primary) 16%, var(--surface));
-      --accent-soft: color-mix(in srgb, var(--accent) 16%, var(--surface));
-      --sh-sm: 0 1px 2px rgba(0,0,0,.4);
-      --sh-md: 0 6px 20px -6px rgba(0,0,0,.5);
-      --sh-lg: 0 16px 48px -14px rgba(0,0,0,.6);
-      --card-inset: inset 0 1px 0 rgba(255,255,255,.04);
+      --paper: #131110; --surface: #1A1816; --sunk: #211E1B;
+      --ink: #EDE8DF; --ink-2: #A8A197; --ink-3: #7C756B;
+      --rule: #2C2825; --rule-2: #3E3833;
+      --seal: #DD7357; --seal-2: #E9917A; --seal-tint: #2A1E1A;
+      --good: #5FA97F; --warn: #C79A46;
+      --btn-face: #EDE8DF; --btn-text: #131110;
       color-scheme: dark;
     }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
-    body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.8; font-feature-settings: "palt" 1; letter-spacing: .01em; -webkit-font-smoothing: antialiased; transition: background .22s var(--ease), color .22s var(--ease); }
-    a { color: var(--primary); text-decoration: none; }
-    ::selection { background: color-mix(in srgb, var(--primary) 24%, transparent); }
-    ::-webkit-scrollbar { width: 10px; height: 10px; }
-    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; border: 2px solid var(--bg); }
-    .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+    body {
+      font-family: var(--sans); background: var(--paper); color: var(--ink);
+      font-size: 14px; line-height: 1.9; letter-spacing: .015em;
+      font-feature-settings: "palt" 1; -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; text-underline-offset: 3px; }
+    a:hover { color: var(--seal); }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 30px; }
+    .label { font-size: 10.5px; font-weight: 700; letter-spacing: .2em; color: var(--ink-3); text-transform: uppercase; }
+    .nums { font-variant-numeric: tabular-nums; }
+    ::selection { background: var(--seal); color: #fff; }
 
-    /* Nav */
-    .nav { position: sticky; top: 0; z-index: 40; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: saturate(180%) blur(10px); border-bottom: 1px solid transparent; transition: border-color .2s, background .2s; }
-    .nav.scrolled { border-color: var(--border); }
-    .nav-inner { display: flex; align-items: center; gap: 16px; height: 62px; }
+    /* ---- 天板 ---- */
+    .nav { position: sticky; top: 0; z-index: 30; background: var(--paper); border-bottom: 1px solid var(--rule); }
+    .nav-in { max-width: 1080px; margin: 0 auto; padding: 0 30px; height: 62px;
+              display: flex; align-items: center; justify-content: space-between; gap: 20px; }
     .brand { display: flex; align-items: center; gap: 11px; }
-    .brand-mark { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: linear-gradient(135deg, var(--primary), var(--accent)); color: #fff; box-shadow: var(--sh-sm); }
-    .brand-mark svg { width: 21px; height: 21px; }
-    .brand-name { font-size: 17px; font-weight: 700; }
-    .brand-name span { color: var(--muted); font-weight: 600; font-size: 13px; margin-left: 2px; }
-    .nav-links { margin-left: auto; display: flex; align-items: center; gap: 8px; }
-    .nav-link { font-size: 13.5px; font-weight: 600; color: var(--muted); padding: 8px 12px; border-radius: var(--r-sm); transition: color .12s, background .12s; }
-    .nav-link:hover { color: var(--text); background: var(--surface2); }
-    @media (max-width: 680px) { .nav-link.opt { display: none; } }
-    .theme-toggle { width: 38px; height: 38px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); display: grid; place-items: center; cursor: pointer; transition: color .12s, border-color .12s; }
-    .theme-toggle:hover { color: var(--text); border-color: var(--primary); }
-    .theme-toggle:focus-visible { outline: none; box-shadow: var(--ring); }
-    .theme-toggle svg { width: 18px; height: 18px; }
-    .theme-toggle .i-sun { display: none; }
-    :root[data-theme="dark"] .theme-toggle .i-moon { display: none; }
-    :root[data-theme="dark"] .theme-toggle .i-sun { display: block; }
+    .brand svg { width: 21px; height: 21px; color: var(--seal); }
+    .brand b { font-family: var(--serif); font-size: 19px; font-weight: 600; letter-spacing: .04em; }
+    .brand span { font-size: 10.5px; font-weight: 700; letter-spacing: .16em; color: var(--ink-3); }
+    .nav-links { display: flex; align-items: center; gap: 26px; }
+    .nav-links a { font-size: 12px; font-weight: 600; letter-spacing: .06em; color: var(--ink-2);
+                   text-decoration: none; border-bottom: 1px solid transparent; padding-bottom: 2px; }
+    .nav-links a:hover { color: var(--ink); border-bottom-color: var(--ink); }
+    .nav-links .go { background: var(--btn-face); color: var(--btn-text); border: 0;
+                     padding: 10px 18px; border-radius: 3px; }
+    .nav-links .go:hover { opacity: .82; color: var(--btn-text); }
+    .theme { width: 30px; height: 30px; border: 0; background: none; color: var(--ink-3);
+             display: grid; place-items: center; cursor: pointer; }
+    .theme:hover { color: var(--ink); }
+    .theme svg { width: 16px; height: 16px; }
+    .theme .i-sun { display: none; }
+    :root[data-theme="dark"] .theme .i-moon { display: none; }
+    :root[data-theme="dark"] .theme .i-sun { display: block; }
+    @media (max-width: 720px) { .nav-links a:not(.go) { display: none; } }
 
-    /* Buttons */
-    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-family: inherit; font-size: 15px; font-weight: 600; line-height: 1; border: 1px solid transparent; border-radius: var(--r-md); padding: 0 20px; height: 46px; cursor: pointer; transition: transform .12s var(--ease-quick), background .12s, box-shadow .12s, border-color .12s; white-space: nowrap; }
-    .btn svg { width: 18px; height: 18px; }
-    .btn:hover { transform: translateY(-1px); }
-    .btn:active { transform: translateY(0) scale(.985); }
-    .btn:focus-visible { outline: none; box-shadow: var(--ring); }
-    .btn-primary { background: var(--primary); color: var(--on-primary); box-shadow: var(--sh-md); }
-    .btn-primary:hover { background: var(--primary-hover); }
-    .btn-ghost { background: var(--surface); color: var(--text); border-color: var(--border); }
-    .btn-ghost:hover { background: var(--surface2); }
-    .btn-lg { height: 52px; font-size: 16px; padding: 0 26px; }
-    .btn-sm { height: 40px; font-size: 14px; padding: 0 16px; }
+    /* ---- 導入 ---- */
+    .hero { padding: 96px 0 0; }
+    .hero .label { color: var(--seal); margin-bottom: 26px; }
+    h1 {
+      font-family: var(--serif); font-size: clamp(34px, 6vw, 60px); font-weight: 600;
+      line-height: 1.35; letter-spacing: .01em; margin-bottom: 30px;
+    }
+    h1 em { font-style: normal; border-bottom: 2px solid var(--seal); padding-bottom: 4px; }
+    .lead {
+      font-family: var(--serif); font-size: 17px; line-height: 2.1; color: var(--ink-2);
+      max-width: 36em; margin-bottom: 40px;
+    }
+    .lead b { color: var(--ink); font-weight: 600; }
+    .cta { display: flex; gap: 22px; align-items: center; flex-wrap: wrap; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 9px; font-size: 14px; font-weight: 600;
+      letter-spacing: .05em; padding: 15px 26px; border: 1px solid transparent; border-radius: 3px;
+      text-decoration: none; cursor: pointer; transition: opacity .18s var(--ease), border-color .18s var(--ease);
+    }
+    .btn svg { width: 15px; height: 15px; }
+    .btn-primary { background: var(--btn-face); color: var(--btn-text); border-color: var(--btn-face); }
+    .btn-primary:hover { opacity: .82; color: var(--btn-text); }
+    .btn-quiet { color: var(--ink-2); border: 0; border-bottom: 1px solid var(--rule-2);
+                 padding: 5px 1px; border-radius: 0; }
+    .btn-quiet:hover { color: var(--ink); border-bottom-color: var(--ink); }
+    .hero-note { font-size: 12px; color: var(--ink-3); margin-top: 26px; }
 
-    /* Hero */
-    .hero { padding: 72px 0 40px; text-align: center; }
-    .trust-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--accent-strong); background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent); padding: 6px 14px; border-radius: 999px; margin-bottom: 22px; }
-    .hero h1 { font-size: clamp(30px, 6vw, 46px); font-weight: 800; line-height: 1.35; letter-spacing: .01em; }
-    .hero h1 .grad { background: linear-gradient(120deg, var(--primary), var(--accent)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
-    .hero p.lead { font-size: clamp(15px, 2.4vw, 18px); color: var(--muted); max-width: 620px; margin: 18px auto 0; line-height: 1.9; }
-    .hero-cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 30px; }
-    .hero-note { font-size: 12.5px; color: var(--muted); margin-top: 16px; }
+    /* ---- 画面の見本 ---- */
+    .frame { margin-top: 66px; border: 1px solid var(--rule-2); background: var(--surface); overflow: hidden; }
+    .frame-bar { display: flex; align-items: center; gap: 8px; padding: 11px 16px;
+                 border-bottom: 1px solid var(--rule); background: var(--sunk); }
+    .frame-dot { width: 8px; height: 8px; border-radius: 99px; background: var(--rule-2); }
+    .frame-url { margin-left: 12px; font-size: 11px; color: var(--ink-3); letter-spacing: .06em; }
+    .frame-body { display: grid; grid-template-columns: 1fr 1.15fr; }
+    @media (max-width: 800px) { .frame-body { grid-template-columns: 1fr; } }
+    .frame-left { padding: 26px 26px 30px; border-right: 1px solid var(--rule); }
+    @media (max-width: 800px) { .frame-left { border-right: 0; border-bottom: 1px solid var(--rule); } }
+    .frame-voice { font-family: var(--serif); font-size: 14px; line-height: 2.0; color: var(--ink); }
+    .frame-voice b { border-bottom: 1px solid var(--seal); }
+    .pf { margin-top: 22px; border-top: 1px solid var(--ink); }
+    .pf div { display: grid; grid-template-columns: 15px 1fr; gap: 10px; padding: 9px 0;
+              border-bottom: 1px solid var(--rule); font-size: 11.5px; color: var(--ink-2); }
+    .pf i { font-style: normal; font-weight: 700; }
+    .pf .ok i { color: var(--good); }
+    .pf .ng i { color: var(--warn); }
+    .frame-right { padding: 0; }
+    .fr-head { padding: 22px 26px 18px; border-bottom: 1px solid var(--ink);
+               display: flex; gap: 16px; align-items: center; }
+    .fr-ring { width: 46px; height: 46px; border: 2.5px solid var(--rule); border-radius: 99px;
+               display: grid; place-items: center; font-size: 10px; font-weight: 700;
+               border-top-color: var(--seal); border-right-color: var(--seal); }
+    .fr-hero { font-size: 25px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+    .fr-hero small { font-size: 12px; font-weight: 500; color: var(--ink-3); }
+    .fr-row { display: grid; grid-template-columns: 1.4fr 1.6fr .8fr; gap: 14px; padding: 10px 26px;
+              border-bottom: 1px solid var(--rule); font-size: 11.5px; }
+    .fr-row b { font-weight: 600; }
+    .fr-row span { color: var(--ink-3); }
+    .fr-row.head { font-size: 9.5px; font-weight: 700; letter-spacing: .14em; color: var(--ink-3);
+                   border-bottom-color: var(--rule-2); }
 
-    /* Product frame */
-    .frame { margin: 40px auto 0; max-width: 900px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--sh-lg), var(--card-inset); overflow: hidden; }
-    .frame-bar { display: flex; align-items: center; gap: 7px; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--surface2); }
-    .frame-dot { width: 11px; height: 11px; border-radius: 999px; background: var(--border); }
-    .frame-url { margin-left: 10px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-    .frame-body { display: grid; grid-template-columns: 168px 1fr; min-height: 300px; }
-    .frame-rail { border-right: 1px solid var(--border); padding: 20px 16px; display: flex; flex-direction: column; gap: 18px; background: var(--surface); }
-    .frame-step { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; color: var(--muted); }
-    .frame-step .b { width: 24px; height: 24px; border-radius: 999px; display: grid; place-items: center; font-size: 12px; font-weight: 700; border: 2px solid var(--border); background: var(--surface); flex-shrink: 0; }
-    .frame-step.done { color: var(--text); }
-    .frame-step.done .b { background: var(--accent); border-color: var(--accent); color: #fff; }
-    .frame-step.active { color: var(--text); }
-    .frame-step.active .b { border-color: var(--primary); color: var(--primary); }
-    .frame-main { padding: 22px; }
-    .frame-main .eyebrow { font-size: 10.5px; font-weight: 700; letter-spacing: .14em; color: var(--accent-strong); }
-    .frame-main h4 { font-size: 16px; font-weight: 700; margin: 4px 0 14px; }
-    .frame-line { height: 10px; border-radius: 6px; background: var(--surface2); margin-bottom: 10px; }
-    .frame-line.w70 { width: 70%; } .frame-line.w50 { width: 50%; } .frame-line.w85 { width: 85%; }
-    .frame-cta { margin-top: 16px; height: 40px; border-radius: var(--r-md); background: linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--accent) 60%, var(--primary))); display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 14px; }
-    @media (max-width: 620px) { .frame-body { grid-template-columns: 1fr; } .frame-rail { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--border); } }
+    /* ---- 節 ---- */
+    .sec { padding: 108px 0 0; }
+    .sec-head { margin-bottom: 46px; }
+    .sec-head h2 { font-family: var(--serif); font-size: clamp(23px, 3.4vw, 31px); font-weight: 600;
+                   line-height: 1.55; margin: 14px 0 12px; letter-spacing: .02em; }
+    .sec-head p { font-size: 13.5px; color: var(--ink-2); max-width: 40em; line-height: 2.0; }
+    .rows { border-top: 1px solid var(--ink); }
+    .row { display: grid; grid-template-columns: 46px 1fr 1.5fr; gap: 26px; align-items: baseline;
+           padding: 26px 0; border-bottom: 1px solid var(--rule); }
+    @media (max-width: 720px) { .row { grid-template-columns: 32px 1fr; }
+                                .row p { grid-column: 2; } }
+    .row .no { font-size: 11px; font-weight: 700; letter-spacing: .1em; color: var(--seal);
+               font-variant-numeric: tabular-nums; }
+    .row h3 { font-family: var(--serif); font-size: 17px; font-weight: 600; letter-spacing: .02em; }
+    .row p { font-size: 13px; color: var(--ink-2); line-height: 2.0; }
+    .row p b { color: var(--ink); font-weight: 600; }
 
-    /* Sections */
-    section.block { padding: 56px 0; }
-    .sec-head { text-align: center; max-width: 640px; margin: 0 auto 36px; }
-    .sec-head .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .14em; color: var(--accent-strong); }
-    .sec-head h2 { font-size: clamp(22px, 4vw, 30px); font-weight: 800; line-height: 1.5; margin-top: 8px; }
-    .sec-head p { font-size: 14.5px; color: var(--muted); margin-top: 12px; line-height: 1.9; }
+    .price { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--ink);
+             border-bottom: 1px solid var(--rule); }
+    @media (max-width: 680px) { .price { grid-template-columns: 1fr; } }
+    .price > div { padding: 30px 30px 32px 0; }
+    .price > div + div { border-left: 1px solid var(--rule); padding-left: 30px; }
+    @media (max-width: 680px) { .price > div + div { border-left: 0; border-top: 1px solid var(--rule); padding-left: 0; } }
+    .price .tag { font-size: 10.5px; font-weight: 700; letter-spacing: .16em; }
+    .price .free .tag { color: var(--good); }
+    .price .paid .tag { color: var(--seal); }
+    .price .amt { font-size: 38px; font-weight: 700; letter-spacing: -.03em; margin: 8px 0 12px;
+                  font-variant-numeric: tabular-nums; }
+    .price .amt small { font-size: 14px; font-weight: 500; color: var(--ink-3); letter-spacing: 0; }
+    .price p { font-size: 12.5px; color: var(--ink-2); line-height: 2.0; }
+    .note-box { margin-top: 30px; padding: 22px 26px; background: var(--sunk);
+                border-left: 2px solid var(--seal); font-size: 12.5px; line-height: 2.0; color: var(--ink-2); }
+    .note-box b { display: block; font-family: var(--serif); font-size: 14.5px; color: var(--ink);
+                  font-weight: 600; margin-bottom: 8px; }
+    .note-box code { font-family: var(--mono); font-size: 11.5px; background: var(--surface); padding: 2px 7px; }
 
-    .cards3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
-    @media (max-width: 760px) { .cards3 { grid-template-columns: 1fr; } }
-    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--sh-md), var(--card-inset); padding: 24px; }
-    .card .ic { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--primary-soft); color: var(--primary); margin-bottom: 14px; }
-    .card .ic svg { width: 22px; height: 22px; }
-    .card .step-no { font-size: 11px; font-weight: 700; letter-spacing: .12em; color: var(--accent-strong); }
-    .card h3 { font-size: 16.5px; font-weight: 700; margin: 6px 0 8px; }
-    .card p { font-size: 13.5px; color: var(--muted); line-height: 1.9; }
+    .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+             border-top: 1px solid var(--ink); }
+    .facts > div { padding: 24px 24px 26px 0; border-bottom: 1px solid var(--rule);
+                   border-right: 1px solid var(--rule); }
+    .facts > div:last-child { border-right: 0; }
+    .facts dt { font-size: 10.5px; font-weight: 700; letter-spacing: .14em; color: var(--ink-3); }
+    .facts dd { font-size: 21px; font-weight: 700; margin: 6px 0 8px; font-variant-numeric: tabular-nums;
+                letter-spacing: -.01em; }
+    .facts p { font-size: 11.5px; color: var(--ink-3); line-height: 1.9; }
 
-    .feat { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-    @media (max-width: 760px) { .feat { grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 480px) { .feat { grid-template-columns: 1fr; } }
-    .feat-item { display: flex; gap: 11px; align-items: flex-start; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 16px; }
-    .feat-item .fic { color: var(--accent); flex-shrink: 0; margin-top: 1px; }
-    .feat-item .fic svg { width: 20px; height: 20px; }
-    .feat-item b { font-size: 14px; font-weight: 700; display: block; }
-    .feat-item span { font-size: 12.5px; color: var(--muted); line-height: 1.8; }
+    .end { padding: 108px 0 120px; }
+    .end h2 { font-family: var(--serif); font-size: clamp(24px, 4vw, 36px); font-weight: 600;
+              line-height: 1.5; margin-bottom: 26px; }
+    footer { border-top: 1px solid var(--rule); padding: 34px 0 60px; }
+    footer .wrap { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap;
+                   font-size: 11.5px; color: var(--ink-3); }
+    footer a { text-decoration: none; }
 
-    /* Pricing */
-    .price-wrap { max-width: 760px; margin: 0 auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--sh-md); overflow: hidden; }
-    .price-row { display: grid; grid-template-columns: 1.4fr 1.6fr 1fr; gap: 12px; padding: 16px 22px; border-bottom: 1px solid var(--border); align-items: center; }
-    .price-row:last-child { border-bottom: 0; }
-    .price-row.head { background: var(--surface2); font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--muted); }
-    .price-row .plan { font-size: 14.5px; font-weight: 700; }
-    .price-row .plan .tag { display: inline-block; font-size: 10.5px; font-weight: 700; color: var(--accent-strong); background: var(--accent-soft); border-radius: 999px; padding: 2px 8px; margin-left: 6px; }
-    .price-row .how { font-size: 12.5px; color: var(--muted); line-height: 1.7; }
-    .price-row .amt { font-size: 17px; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; color: var(--primary); }
-    .price-row .amt.free { color: var(--accent-strong); }
-    .price-note { font-size: 12.5px; color: var(--muted); text-align: center; margin-top: 16px; line-height: 1.9; }
-    @media (max-width: 620px) { .price-row { grid-template-columns: 1fr auto; } .price-row .how { display: none; } .price-row.head .how { display: none; } }
-
-    /* Data sources */
-    .src { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 820px; margin: 0 auto; }
-    @media (max-width: 620px) { .src { grid-template-columns: 1fr; } }
-    .src-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 20px; }
-    .src-card h4 { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
-    .src-card .free { font-size: 10.5px; font-weight: 700; color: var(--accent-strong); background: var(--accent-soft); border-radius: 999px; padding: 2px 8px; }
-    .src-card p { font-size: 12.5px; color: var(--muted); margin-top: 8px; line-height: 1.9; }
-
-    /* CTA band */
-    .cta-band { text-align: center; background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 12%, var(--surface)), color-mix(in srgb, var(--accent) 12%, var(--surface))); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 44px 24px; }
-    .cta-band h2 { font-size: clamp(22px, 4vw, 28px); font-weight: 800; }
-    .cta-band p { color: var(--muted); margin: 12px 0 24px; font-size: 14.5px; }
-
-    footer.foot { border-top: 1px solid var(--border); margin-top: 24px; }
-    .foot-inner { padding: 28px 0 48px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); line-height: 1.9; }
-    .foot a { font-weight: 600; }
-
-    /* Reveal on scroll — hidden only when JS is available (no-JS stays visible) */
-    .reveal-on-scroll { transition: opacity .6s var(--ease), transform .6s var(--ease); }
-    html.js .reveal-on-scroll { opacity: 0; transform: translateY(20px); }
-    html.js .reveal-on-scroll.in { opacity: 1; transform: none; }
-    @keyframes heroIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
-    .hero > * { animation: heroIn .6s var(--ease) both; }
-    .hero > *:nth-child(2) { animation-delay: .06s; }
-    .hero > *:nth-child(3) { animation-delay: .12s; }
-    .hero > *:nth-child(4) { animation-delay: .18s; }
-    .hero .frame { animation-delay: .24s; }
+    .reveal { opacity: 0; transform: translateY(10px); }
+    .reveal.in { opacity: 1; transform: none; transition: opacity .6s var(--ease), transform .6s var(--ease); }
+    html:not(.js) .reveal { opacity: 1; transform: none; }
     @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
-      .reveal-on-scroll { opacity: 1 !important; transform: none !important; }
       html { scroll-behavior: auto; }
+      .reveal, .reveal.in { opacity: 1; transform: none; transition: none; }
     }
   </style>
 </head>
 <body>
 
-<nav class="nav" id="nav">
-  <div class="wrap nav-inner">
-    <a class="brand" href="index.html">
-      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13c2.5 0 2.5-2.5 5-2.5S14.5 13 17 13s2.5-2.5 5-2.5"/><path d="M2 18c2.5 0 2.5-2.5 5-2.5S14.5 18 17 18s2.5-2.5 5-2.5"/></svg></span>
-      <span class="brand-name">telepy <span>リスト作成</span></span>
-    </a>
-    <div class="nav-links">
-      <a class="nav-link opt" href="#how">使い方</a>
-      <a class="nav-link opt" href="#price">料金</a>
-      <a class="nav-link opt" href="#data">データ</a>
-      <a class="btn btn-primary btn-sm" href="list.html">はじめる</a>
-      <button class="theme-toggle" aria-label="ライト／ダークを切り替え" onclick="TP.toggleTheme()">
-        <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>
-        <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+<nav class="nav">
+  <div class="nav-in">
+    <span class="brand">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 6.5h18M3 12h18M3 17.5h11" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/><circle cx="19.5" cy="17.5" r="2.6" fill="currentColor"/></svg>
+      <b>telepy</b><span>架電リスト</span>
+    </span>
+    <span class="nav-links">
+      <a href="#how">やること</a>
+      <a href="#price">料金</a>
+      <a href="#data">データ</a>
+      <a class="go" href="list.html">はじめる</a>
+      <button class="theme" onclick="toggleTheme()" aria-label="ライト／ダークを切り替え">
+        <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>
+        <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
       </button>
-    </div>
+    </span>
   </div>
 </nav>
 
 <header class="hero">
   <div class="wrap">
-    <span class="trust-chip">🔒 データはこの端末内で処理・アップロードなし</span>
-    <h1>依頼文を貼れば、<br><span class="grad">架電リストになる。</span></h1>
-    <p class="lead">お客様からの依頼文をそのまま貼るだけ。条件に合う日本企業が<b>この端末の中で</b>見つかります。電話番号だけは、<b>AIが1社ずつ調べます</b>。</p>
-    <div class="hero-cta">
-      <a class="btn btn-primary btn-lg" href="list.html">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-        担当を呼ぶ（無料ではじめる）
+    <p class="label">架電リスト作成</p>
+    <h1>依頼文を貼れば、<br><em>架電リストになる。</em></h1>
+    <p class="lead">お客様からの依頼文を、書き換えずにそのまま貼るだけ。条件に合う日本企業を<b>この端末の中で</b>探します。電話番号だけは、<b>AIが1社ずつWebを調べて</b>埋めます。</p>
+    <div class="cta">
+      <a class="btn btn-primary" href="list.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"><path d="M4 12h15M13 6l6 6-6 6"/></svg>
+        担当を呼ぶ
       </a>
-      <a class="btn btn-ghost btn-lg" href="#price">料金を見る</a>
+      <a class="btn btn-quiet" href="#price">料金を見る</a>
     </div>
-    <p class="hero-note">インストール不要・ブラウザだけで動作。会社を探して名簿にするところまでは <b>ずっと無料</b> です。</p>
+    <p class="hero-note">インストール不要・ブラウザだけで動作。会社を探して名簿にするところまでは、ずっと無料です。</p>
 
-    <div class="frame reveal-on-scroll">
+    <div class="frame reveal">
       <div class="frame-bar">
         <span class="frame-dot"></span><span class="frame-dot"></span><span class="frame-dot"></span>
-        <span class="frame-url">telepy — リスト作成</span>
+        <span class="frame-url">telepy — 架電リストをつくる担当</span>
       </div>
       <div class="frame-body">
-        <div class="frame-rail">
-          <div class="frame-step done"><span class="b">✓</span>業種：工務店・不動産</div>
-          <div class="frame-step done"><span class="b">✓</span>エリア：一都三県</div>
-          <div class="frame-step done"><span class="b">✓</span>規模：10〜20名</div>
-          <div class="frame-step active"><span class="b">!</span>資本金の列がありません</div>
-          <div class="frame-step"><span class="b">·</span>1,284,502行を走査</div>
+        <div class="frame-left">
+          <p class="frame-voice">1,000社そろいました。東京都 612・神奈川県 188・千葉県 104・埼玉県 96。<br><br>ただし、<b>この時点では1件も架電できません</b>。国税庁のデータに電話番号が入っていないためです。ここから先が、私の本番です。</p>
+          <div class="pf">
+            <div class="ok"><i>✓</i><span>社名に含まれる言葉 8語 — 適用します</span></div>
+            <div class="ok"><i>✓</i><span>エリア 4都県 — 適用します</span></div>
+            <div class="ng"><i>✗</i><span>資本金 上限¥10,000,000 — この名簿に資本金の列がありません</span></div>
+            <div class="ng"><i>✗</i><span>電話番号 — あとで1社ずつ調べます</span></div>
+          </div>
         </div>
-        <div class="frame-main">
-          <div class="eyebrow">作成結果</div>
-          <h4>架電できる 683 / 1,000 社</h4>
-          <div class="frame-line w85"></div>
-          <div class="frame-line w70"></div>
-          <div class="frame-line w50"></div>
-          <div class="frame-cta">▸ 架電用CSV（電話番号がある 683 件）</div>
+        <div class="frame-right">
+          <div class="fr-head">
+            <span class="fr-ring">68%</span>
+            <span>
+              <span class="label" style="display:block">架電可能率</span>
+              <span class="fr-hero">架電できる 683 <small>/ 1,000 社</small></span>
+            </span>
+          </div>
+          <div class="fr-row head"><span>会社名</span><span>所在地</span><span>電話番号</span></div>
+          <div class="fr-row"><b>株式会社まごころ工務店</b><span>東京都世田谷区北沢2-1-1</span><span>03-3427-****</span></div>
+          <div class="fr-row"><b>ハマノ不動産株式会社</b><span>神奈川県横浜市港北区1-2</span><span>045-540-****</span></div>
+          <div class="fr-row"><b>株式会社さくら建設</b><span>千葉県船橋市本町3-4-5</span><span>047-460-****</span></div>
+          <div class="fr-row"><b>むさし住宅株式会社</b><span>埼玉県川口市栄町1-2-3</span><span>048-250-****</span></div>
+          <div class="fr-row"><b>第一リフォーム株式会社</b><span>東京都大田区蒲田5-6-7</span><span>未取得</span></div>
         </div>
       </div>
     </div>
@@ -270,152 +292,130 @@
 </header>
 
 <main>
-  <section class="block" id="how">
+  <section class="sec" id="how">
     <div class="wrap">
-      <div class="sec-head reveal-on-scroll">
-        <div class="eyebrow">HOW IT WORKS</div>
+      <div class="sec-head reveal">
+        <p class="label">やること</p>
         <h2>やることは、依頼文を貼ることだけ</h2>
-        <p>専門知識は要りません。CSVの用意も、zipの解凍も、こちらで引き受けます。</p>
+        <p>どこから探すかは、こちらで決めます。CSVを用意する必要も、zipを解凍する必要もありません。</p>
       </div>
-      <div class="cards3">
-        <div class="card reveal-on-scroll">
-          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg></div>
-          <div class="step-no">STEP 01</div>
+      <div class="rows">
+        <div class="row reveal">
+          <span class="no">01</span>
           <h3>依頼文を貼る</h3>
-          <p>「工務店・不動産、従業員10-20名、一都三県で1000件」——お客様からの文面をそのまま貼れば、業種・エリア・規模・件数を読み取ります。「一都三県」「関西」もそのまま通ります。</p>
+          <p>「工務店・不動産、従業員10-20名、一都三県で1000件」——お客様からの文面をそのまま貼れば、業種・エリア・規模・件数を読み取ります。<b>「一都三県」「関西」もそのまま通ります。</b></p>
         </div>
-        <div class="card reveal-on-scroll">
-          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></div>
-          <div class="step-no">STEP 02</div>
+        <div class="row reveal">
+          <span class="no">02</span>
           <h3>効かない条件は、先に言う</h3>
-          <p>走らせる前に「この名簿では資本金で絞れません」と宣告します。数分待った末に0件、が起きません。国税庁の無料データは内蔵済み・zipはそのまま渡せます。</p>
+          <p>走らせる前に「この名簿では資本金で絞れません」と宣告します。<b>数分待った末に0件、が起きません。</b>✗の隣には必ず、どうすればいいかのボタンを置いています。</p>
         </div>
-        <div class="card reveal-on-scroll">
-          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15l-1.9-4.1L5.5 9l4.6-1.4L12 3z"/><path d="M19 14l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z"/></svg></div>
-          <div class="step-no">STEP 03</div>
-          <h3>電話番号を、AIが調べる</h3>
-          <p>公的データに電話番号は入っていません。そこだけ Claude が1社ずつWebを検索して特定します。<b>押す前に金額が出て、上限に達したら自動で止まります。</b></p>
+        <div class="row reveal">
+          <span class="no">03</span>
+          <h3>足りなければ、AIが探しに行く</h3>
+          <p>手元にデータが無くても止まりません。<b>AIがWebを検索して会社そのものを探し</b>、社名・所在地・電話番号まで一度に集めます。出どころのURLを示せない会社は採用しません。</p>
         </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="block" style="padding-top:0;">
-    <div class="wrap">
-      <div class="feat">
-        <div class="feat-item reveal-on-scroll"><span class="fic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><div><b>母集団は完全無料</b><span>国税庁の全件データ（全国約500万法人）を無料で使用・自動更新</span></div></div>
-        <div class="feat-item reveal-on-scroll"><span class="fic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><div><b>PC内で完結</b><span>CSV・依頼文・APIキーはサーバーに送信されません</span></div></div>
-        <div class="feat-item reveal-on-scroll"><span class="fic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><div><b>1000件でもサクサク</b><span>1行ずつ処理するストリーミング検索でメモリを圧迫しない</span></div></div>
-        <div class="feat-item reveal-on-scroll"><span class="fic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><div><b>一都三県まとめて</b><span>県別CSVを4つ同時に読み込み、重複を除いて統合</span></div></div>
-        <div class="feat-item reveal-on-scroll"><span class="fic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><div><b>架電用CSVを出力</b><span>電話番号・社名のCSVをそのまま架電ツールに読み込める</span></div></div>
-        <div class="feat-item reveal-on-scroll"><span class="fic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><div><b>ライト／ダーク対応</b><span>目にやさしい配色。端末の設定に自動で追従</span></div></div>
-      </div>
-    </div>
-  </section>
-
-  <section class="block" id="price" style="background:var(--surface2);">
-    <div class="wrap">
-      <div class="sec-head reveal-on-scroll">
-        <div class="eyebrow">PRICING</div>
-        <h2>料金は「電話番号をAIで埋める分」だけ</h2>
-        <p>名前＋住所のリストを作るだけなら¥0。電話番号・HPまで補完する時だけ、少額の従量課金が発生します。</p>
-      </div>
-      <div class="price-wrap reveal-on-scroll">
-        <div class="price-row head"><span>使い方</span><span class="how">HP・電話番号の補完</span><span style="text-align:right;">1000件の目安</span></div>
-        <div class="price-row"><span class="plan">母集団だけ<span class="tag">名前・住所</span></span><span class="how">補完なし（国税庁データそのまま）</span><span class="amt free">¥0</span></div>
-        <div class="price-row"><span class="plan">ローカル版<span class="tag">最安</span></span><span class="how">無料Web検索で大半を補完＋迷った分だけAI</span><span class="amt">¥300〜1,500</span></div>
-        <div class="price-row"><span class="plan">ブラウザ版</span><span class="how">全件をAI＋Anthropic Web検索で補完</span><span class="amt">¥3,000前後</span></div>
-      </div>
-      <p class="price-note">従量課金はAI補完（Claude Haiku＝入力$1/出力$5 per 100万トークン ＋ Web検索$10/1000回）のみ。<br>ブラウザ版はお客様自身のAPIキーで直接 Anthropic に請求されます。<strong>使う分だけの上限（トークン）を設定でき、超えると自動で停止します。</strong></p>
-
-      <div class="card reveal-on-scroll" style="max-width:760px;margin:26px auto 0;">
-        <h3 style="font-size:16.5px;font-weight:700;margin-bottom:8px;">💡 いちばん安く使うには（ローカル版）</h3>
-        <p style="font-size:13.5px;color:var(--muted);line-height:1.9;">
-          手元のPCで <code style="background:var(--surface2);padding:2px 6px;border-radius:6px;">python main.py</code> を起動すると、
-          無料のWeb検索（DuckDuckGo）で大半のHP・電話番号を補完し、<strong>迷った会社だけAIに確認</strong>します。
-          国税庁データの取得・月次更新も自動。1000件で <strong>¥300〜1,500</strong> と、ブラウザ版の約1/10です。
-        </p>
-        <p style="font-size:13px;color:var(--muted);margin-top:10px;">
-          セットアップ手順は
-          <a href="https://github.com/playmark0227-svg/tellepy#readme" target="_blank" rel="noopener">READMEの「リスト作成機能」</a>
-          をご覧ください（ブラウザ版は外部サイトを直接巡回できないCORS制約のため、無料巡回はローカルのPythonが担当します）。
-        </p>
-      </div>
-    </div>
-  </section>
-
-  <section class="block" id="data">
-    <div class="wrap">
-      <div class="sec-head reveal-on-scroll">
-        <div class="eyebrow">DATA SOURCES</div>
-        <h2>信頼できる公的データが土台</h2>
-      </div>
-      <div class="src">
-        <div class="src-card reveal-on-scroll">
-          <h4>国税庁 法人番号 全件データ <span class="free">無料</span></h4>
-          <p>全国約500万法人の商号・所在地。ローカル版なら起動するだけで一都三県ぶんを自動ダウンロードし、月次更新も自動で反映します。</p>
-        </div>
-        <div class="src-card reveal-on-scroll">
-          <h4>gBizINFO（経産省） <span class="free">無料API</span></h4>
-          <p>資本金・従業員数・業種などの企業属性。ローカル版の自動巡回で、条件に合う企業を目標件数まで集められます。</p>
+        <div class="row reveal">
+          <span class="no">04</span>
+          <h3>分かっていないことを、隠さない</h3>
+          <p>電話番号が0件なら「架電できる 0 / 1,000 社」と出します。<b>取れなかった数も、AIが判断した行も、必ず表示します。</b>そのまま上司とクライアントに見せられる状態で渡します。</p>
         </div>
       </div>
     </div>
   </section>
 
-  <section class="block">
+  <section class="sec" id="price">
     <div class="wrap">
-      <div class="cta-band reveal-on-scroll">
-        <h2>いますぐ試せます</h2>
-        <p>インストール不要。ブラウザで開いて、依頼文を貼るだけ。</p>
-        <a class="btn btn-primary btn-lg" href="list.html">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-          担当を呼ぶ（無料ではじめる）
+      <div class="sec-head reveal">
+        <p class="label">料金</p>
+        <h2>お金がかかるのは、電話番号を調べるところだけ</h2>
+        <p>会社を探して名簿にするところまでは、通信も課金も発生しません。有料の工程は、押す前に金額が出て、上限に達したら自動で止まります。</p>
+      </div>
+      <div class="price reveal">
+        <div class="free">
+          <p class="tag">無料</p>
+          <p class="amt">¥0</p>
+          <p>会社を探して名簿にするところまで。内蔵データ・手元のCSV/zip・絞り込み・詳細CSVの書き出し。この端末の中だけで動きます。</p>
+        </div>
+        <div class="paid">
+          <p class="tag">従量</p>
+          <p class="amt">¥3〜40 <small>/ 社</small></p>
+          <p>電話番号と公式サイトを1社ずつ調べる工程だけ。あなたの Anthropic APIキーで直接課金され、telepy は一切受け取りません。</p>
+        </div>
+      </div>
+      <div class="note-box reveal">
+        <b>無料で自動探索する方法もあります</b>
+        手元で <code>python main.py</code> を起動し、検索モードを「Web自動探索」にすると、無料の検索エンジンで条件に合う会社のホームページを自分で探しに行きます。データを1つも用意せず、1円もかけずに、社名・住所・電話番号まで集まります。ブラウザ版で同じことをすると有料になるのは、ブラウザから外部サイトを直接読めない仕様（CORS）のためです。
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="data">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <p class="label">データ</p>
+        <h2>土台は、公的データ</h2>
+        <p>国税庁「法人番号公表サイト」の全件データを使います。無料・商用利用可・月次更新。zipのまま渡せば、解凍せずに読みます。</p>
+      </div>
+      <dl class="facts reveal">
+        <div>
+          <dt>法人数</dt>
+          <dd>約500万</dd>
+          <p>日本国内の全法人。国税庁が公表しているものをそのまま使います。</p>
+        </div>
+        <div>
+          <dt>費用</dt>
+          <dd>¥0</dd>
+          <p>利用申請もAPIトークンも要りません。誰でも取得できます。</p>
+        </div>
+        <div>
+          <dt>更新</dt>
+          <dd>月次</dd>
+          <p>新しい版が出たら自動で取り直し、常に最新の母集団を保ちます。</p>
+        </div>
+        <div>
+          <dt>入っていないもの</dt>
+          <dd>電話番号</dd>
+          <p>資本金・従業員数も含まれません。だからそこだけAIが調べます。</p>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="end">
+    <div class="wrap reveal">
+      <h2>依頼文は、もう手元にあるはずです。</h2>
+      <div class="cta">
+        <a class="btn btn-primary" href="list.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"><path d="M4 12h15M13 6l6 6-6 6"/></svg>
+          担当を呼ぶ
         </a>
+        <a class="btn btn-quiet" href="https://github.com/playmark0227-svg/tellepy#readme" target="_blank" rel="noopener">仕組みを読む</a>
       </div>
     </div>
   </section>
 </main>
 
-<footer class="foot">
-  <div class="wrap foot-inner">
-    <div>
-      <strong>telepy</strong> — テレアポ代行AIシステム<br>
-      依頼文・CSV・APIキーはサーバーに送信されません（AI補完の実行時のみ、あなたのキーで直接 Anthropic に問い合わせます）。
-    </div>
-    <div>
-      <a href="list.html">リスト作成をひらく</a><br>
-      <a href="https://www.houjin-bangou.nta.go.jp/download/zenken/" target="_blank" rel="noopener">国税庁 全件データ</a> ／
-      <a href="https://platform.claude.com/" target="_blank" rel="noopener">Anthropic APIキー</a>
-    </div>
+<footer>
+  <div class="wrap">
+    <span>telepy — テレアポ代行AIシステム</span>
+    <span>依頼文・CSV・APIキーはサーバーに送信されません</span>
   </div>
 </footer>
 
 <script>
-var TP = {
-  toggleTheme: function () {
+  function toggleTheme() {
     var cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
     var next = cur === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', next);
     try { localStorage.setItem('telepy_theme', next); } catch (e) {}
-  },
-  init: function () {
-    var nav = document.getElementById('nav');
-    var onScroll = function () { nav.classList.toggle('scrolled', window.scrollY > 8); };
-    window.addEventListener('scroll', onScroll, { passive: true }); onScroll();
-    var items = document.querySelectorAll('.reveal-on-scroll');
-    if (!('IntersectionObserver' in window)) {
-      for (var i = 0; i < items.length; i++) items[i].classList.add('in');
-      return;
-    }
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
-    }, { rootMargin: '0px 0px -8% 0px', threshold: .08 });
-    for (var j = 0; j < items.length; j++) io.observe(items[j]);
   }
-};
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { TP.init(); });
-else TP.init();
+  (function () {
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+    }, { rootMargin: '0px 0px -8% 0px' });
+    document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+  })();
 </script>
 </body>
 </html>

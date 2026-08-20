@@ -154,7 +154,7 @@ const quality = await page.textContent('#lb-note');
 check('分かっていないことを列挙する', /資本金の条件は適用していません/.test(quality), quality);
 check('AI補完カードが出る', await page.isVisible('#lb-ai-card'), '');
 const quote = await page.textContent('#tp-quote-amt');
-check('押す前に金額が出る', /^≒ ¥[\d,]+$/.test(quote.trim()), quote);
+check('押す前に金額が出る', /^≒\s*¥[\d,]+$/.test(quote.trim()), quote);
 await page.waitForTimeout(700);
 check('済んだ工程が畳まれる', await page.isVisible('#tp-compact') && !(await page.isVisible('#tp-intro')), '');
 check('畳んでも条件が一目で分かる', /工務店/.test(await page.textContent('#tp-compact-desc')),
@@ -168,6 +168,18 @@ await page.waitForTimeout(300);
 check('行クリックで根拠が開く', (await page.$$('tr.row-why.is-open')).length === 1, '');
 const why = await page.textContent('tr.row-why.is-open');
 check('根拠が実データで書かれる', /社名に「/.test(why) && /電話番号 未取得/.test(why), why);
+
+// ⑧-2 全行おなじ値しか入らない列は畳む（同じ文字が並ぶだけの列は情報ではない）
+const cols = await page.evaluate(() => {
+  const t = document.getElementById('lb-table');
+  const vis = [...t.querySelectorAll('thead th')].filter(th => getComputedStyle(th).display !== 'none')
+    .map(th => th.textContent.trim());
+  return { cls: t.className, vis };
+});
+check('中身の無い列を畳む', cols.cls.includes('no-size') && cols.cls.includes('no-why'),
+  JSON.stringify(cols));
+check('意味のある列だけ残る',
+  cols.vis.join('/') === '会社名/所在地/電話番号', JSON.stringify(cols.vis));
 
 // ⑨ 「このリストの作り方」
 await page.click('#tp-recipe summary');
