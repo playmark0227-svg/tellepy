@@ -180,6 +180,38 @@
     }
     .grp-note b { font-weight: 700; }
 
+    /* よく使う条件 */
+    .presets { display: grid; gap: 5px; }
+    .preset {
+      font: inherit; font-size: 11.5px; text-align: left; color: var(--text-2);
+      background: var(--sunk); border: 0; border-radius: var(--r); padding: 6px 9px;
+      cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .preset:hover { background: var(--accent-tint); color: var(--accent); }
+
+    /* 名簿が持っている列 */
+    .cols { display: flex; flex-wrap: wrap; gap: 4px 9px; font-size: 10.5px;
+            color: var(--text-3); margin-bottom: 10px; }
+    .cols i { font-style: normal; }
+    .cols .y i { color: var(--ok); }
+    .cols .n { color: var(--warn); }
+
+    /* 計器：文章で否定せず、数字で示す */
+    .meterbar { border-top: 1px solid var(--line); padding: 7px 16px; background: var(--sunk);
+                display: flex; gap: 16px; font-size: 10.5px; color: var(--text-3);
+                font-variant-numeric: tabular-nums; flex-wrap: wrap; }
+    .meterbar b { color: var(--text-2); font-weight: 600; }
+    .meterbar .hot b { color: var(--accent); }
+
+    /* 件数チップ（金額つき） */
+    #tp-limit-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+    #tp-limit-chips button {
+      font: inherit; font-size: 12px; color: var(--text-2); background: var(--surface);
+      border: 1px solid var(--line-2); border-radius: var(--r); padding: 7px 11px; cursor: pointer;
+    }
+    #tp-limit-chips button:hover { border-color: var(--accent); color: var(--accent); }
+    #tp-limit-chips button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+
     /* 探し方の切り替え */
     .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 0;
            border: 1px solid var(--line-2); border-radius: var(--r); overflow: hidden; }
@@ -212,8 +244,11 @@
       border: 1px solid var(--accent); border-radius: var(--r); padding: 5px 9px; margin-top: 6px;
     }
     .tag-input:focus { outline: none; }
-    .kw-line { font-size: 11px; color: var(--text-3); margin-top: 9px; line-height: 1.7; }
-    .kw-line b { color: var(--text-2); font-weight: 600; }
+    .kw-line { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 9px; align-items: center; }
+    .kw-t { font-size: 10.5px; font-weight: 700; color: var(--text-3); letter-spacing: .04em;
+            width: 100%; margin-bottom: 2px; }
+    .kw-b { font-size: 10.5px; color: var(--text-3); background: var(--sunk);
+            border-radius: 2px; padding: 2px 6px; }
 
     /* エリア */
     .areas { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
@@ -462,6 +497,11 @@
       <div class="rail-scroll">
 
         <div class="grp">
+          <div class="grp-t"><span>よく使う条件</span><button onclick="UI.savePreset()">＋いまの条件</button></div>
+          <div class="presets" id="tp-presets"></div>
+        </div>
+
+        <div class="grp">
           <div class="grp-t"><span>探し方</span></div>
           <div class="seg" id="method">
             <button type="button" class="on" data-m="web" onclick="UI.method('web')">Webから探す</button>
@@ -550,6 +590,7 @@
           <b id="lb-file-label">データ元を確認中…</b>
           <button onclick="UI.openData()">変更</button>
         </div>
+        <div class="cols" id="tp-columns"></div>
         <button class="btn btn-go btn-lg" id="lb-run" onclick="LB.run()">Webから探す</button>
         <p class="hint" id="run-note" style="text-align:center;margin-top:8px"></p>
       </div>
@@ -574,15 +615,14 @@
 
       <div class="running hidden" id="lb-progress-card">
         <div class="running-bar"></div>
-        <p class="running-t" id="lb-progress-text">読み込んでいます…</p>
-        <p class="running-s">この端末の中だけで処理しています</p>
+        <p class="running-t" id="lb-progress-text">0行を確認</p>
       </div>
 
       <div class="results" id="lb-table-wrap">
         <div class="blank" id="lb-empty">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <h2 id="blank-t">まだリストがありません</h2>
-          <p id="blank-p">左で条件を決めて「この条件で探す」を押してください。</p>
+          <p id="blank-p" class="hidden"></p>
           <button class="btn btn-line btn-sm" id="blank-btn" onclick="LB.useSample()">見本で動きを見る</button>
         </div>
         <table id="lb-table" class="hidden">
@@ -594,6 +634,7 @@
       </div>
 
       <ul class="foot" id="lb-note"></ul>
+      <div class="meterbar" id="tp-meter"></div>
       <div class="hidden" id="lb-stats"></div>
     </section>
   </div>
@@ -626,9 +667,8 @@
       </select>
     </div>
     <div class="field">
-      <label>データが無い場合</label>
-      <p>AIがWebを検索して会社そのものを探すこともできます（有料）。</p>
-      <button class="btn btn-line btn-sm" style="margin-top:8px" onclick="UI.close('dlg-data');UI.openAi('discover')">AIに探させる</button>
+      <label>名簿を使わない</label>
+      <button class="btn btn-line btn-sm" onclick="UI.close('dlg-data');UI.method('web')">Webから探すに切り替える</button>
     </div>
   </div>
   <div class="dlg-f"><button class="btn btn-dark btn-sm" onclick="UI.close('dlg-data')">閉じる</button></div>
@@ -640,14 +680,13 @@
     <button class="head-btn" onclick="UI.close('dlg-ai')" aria-label="閉じる">✕</button></div>
   <div class="dlg-b" id="lb-ai-card">
     <div class="price-row"><b id="tp-quote-amt">¥0</b><span id="tp-quote-sub"></span></div>
-    <p id="ai-lead"></p>
     <div class="field" style="margin-top:16px">
       <label for="lb-ai-limit">調べる件数</label>
-      <select id="lb-ai-limit" onchange="UI.quote()">
-        <option value="10">10社だけ試す</option><option value="50">50社</option>
-        <option value="100">100社</option><option value="0">全部</option>
+      <select id="lb-ai-limit" class="hidden" onchange="UI.quote()">
+        <option value="10">10</option><option value="50">50</option>
+        <option value="100">100</option><option value="0">0</option>
       </select>
-      <p class="hint">モデルと上限は左の「AIの設定」で変えられます。</p>
+      <div class="chips" id="tp-limit-chips"></div>
     </div>
     <div class="meter hidden" id="tp-cost-meter"><i></i></div>
     <p class="hint hidden" id="tp-cost-label"></p>
@@ -1682,7 +1721,7 @@ var LB = {
         this._aiCostYen = aiCostYen(model, this._aiIn, this._aiOut, this._aiSearches);
         UI.spend(this._aiCostYen);
         document.getElementById('lb-progress-text').textContent =
-          'AIがWebを検索しています… ' + this.companies.length + ' / ' + target + '社';
+          'Webを検索 ' + this.companies.length + ' / ' + target + '社';
       }
     } catch (e) {
       toast('探索に失敗しました: ' + e.message, 'error');
@@ -1835,6 +1874,7 @@ var UI = {
     document.getElementById('lb-count').addEventListener('change', function () { LB.reslice(); });
     CX.loadManifest().then(function () { UI.sourceLine(); });
     this.theme(true);
+    this.presets();
     this.method('web');   // 名簿を持っていなくても、開いた瞬間から探せる状態にする
     this.render();
   },
@@ -1858,8 +1898,8 @@ var UI = {
     });
     var web = m === 'web';
     document.getElementById('method-hint').textContent = web
-      ? 'AIが会社のホームページを見つけて、社名・住所・電話番号まで拾います。名簿は要りません。'
-      : '国税庁データなどの名簿から絞り込みます。無料。電話番号は入っていません。';
+      ? '公開ホームページから 社名・住所・電話番号（名簿不要）'
+      : '手元の名簿から絞り込み（無料・電話番号なし）';
     document.getElementById('src-row').classList.toggle('hidden', web);
     document.getElementById('grp-ai').classList.toggle('hidden', !web);
     document.getElementById('grp-detail').classList.toggle('hidden', web);
@@ -1874,7 +1914,7 @@ var UI = {
       });
       document.getElementById('grp-emp').classList.remove('is-off');
       document.getElementById('grp-cap').classList.remove('is-off');
-      var msg = '<b>！</b><span>AIへの希望として伝えます。ただし裏取りはできないので、外れる会社も混ざります。</span>';
+      var msg = '<b>！</b><span>AIへの希望として伝達（裏取りなし）</span>';
       var n1 = document.getElementById('note-emp'), n2 = document.getElementById('note-cap');
       n1.classList.remove('hidden'); n2.classList.remove('hidden');
       n1.innerHTML = msg; n2.innerHTML = msg;
@@ -1882,6 +1922,72 @@ var UI = {
       this.limits();
     }
     this.runButton();
+  },
+
+  /* よく使う条件。2回目以降を速くする。押しても実行はしない（誤射を防ぐ）。 */
+  PRESETS: [
+    { i: '工務店, 不動産', p: '東京都, 神奈川県, 千葉県, 埼玉県', n: 1000 },
+    { i: '飲食店', p: '大阪府', n: 300 },
+    { i: '製造業', p: '愛知県', n: 500 }
+  ],
+  presets: function () {
+    var hist = [];
+    try { hist = JSON.parse(localStorage.getItem('telepy_recent') || '[]'); } catch (e) {}
+    var all = hist.concat(this.PRESETS).slice(0, 6);
+    document.getElementById('tp-presets').innerHTML = all.map(function (x, k) {
+      var label = [x.i, (x.p || '全国'), Number(x.n).toLocaleString() + '件']
+        .map(function (v) { return String(v).replace(/, /g, '・'); }).join('／');
+      return '<button type="button" class="preset" onclick="UI.usePreset(' + k + ')">' + esc(label) + '</button>';
+    }).join('');
+    this._presetList = all;
+  },
+  usePreset: function (k) {
+    var x = (this._presetList || [])[k];
+    if (!x) return;
+    document.getElementById('lb-industries').value = x.i;
+    document.getElementById('lb-prefectures').value = x.p;
+    document.getElementById('lb-keywords').value = '';
+    document.getElementById('lb-count').value = x.n;
+    if (x.e0 != null) document.getElementById('lb-emp-min').value = x.e0;
+    if (x.e1 != null) document.getElementById('lb-emp-max').value = x.e1;
+    if (x.c != null) { document.getElementById('lb-cap-max').value = x.c; }
+    this.syncFromInputs();
+  },
+  savePreset: function () {
+    var c = LB.collectCriteria();
+    if (!c.industries.length && !c.name_keywords.length) { toast('先に業種を入れてください', 'error'); return; }
+    var item = { i: c.industries.join(', ') || c.name_keywords.slice(0, 2).join(', '),
+                 p: c.prefectures.join(', '), n: c.target_count,
+                 e0: c.employee_min, e1: c.employee_max, c: c.capital_max };
+    try {
+      var hist = JSON.parse(localStorage.getItem('telepy_recent') || '[]');
+      hist = hist.filter(function (x) { return !(x.i === item.i && x.p === item.p && x.n === item.n); });
+      hist.unshift(item);
+      localStorage.setItem('telepy_recent', JSON.stringify(hist.slice(0, 3)));
+    } catch (e) {}
+    this.presets();
+    toast('この条件を保存しました');
+  },
+
+  /* 名簿が持っている列。記号だけにせず、必ず列名を併記する。 */
+  columns: function () {
+    var el = document.getElementById('tp-columns');
+    var s = LB._shape;
+    if (!s || this._method === 'web') { el.innerHTML = ''; return; }
+    var cols = [['社名', true], ['所在地', true], ['郵便番号', true],
+                ['電話番号', !!s.hasPhone], ['資本金', !!s.hasCapital], ['従業員数', !!s.hasEmployee]];
+    el.innerHTML = cols.map(function (c) {
+      return '<span class="' + (c[1] ? 'y' : 'n') + '"><i>' + (c[1] ? '✓' : '✕') + '</i> ' + c[0] + '</span>';
+    }).join('');
+  },
+
+  /* 計器。「読み取りはAIではない」を否定文ではなく数字で示す。
+     依頼文を読んで何千社出しても 0 のまま動かず、有料工程を押した瞬間に初めて動く。 */
+  meter: function () {
+    document.getElementById('tp-meter').innerHTML =
+      '<span class="' + (LB._aiCalls ? 'hot' : '') + '">AI <b>' + LB._aiCalls + '</b>回</span>' +
+      '<span class="' + (LB._aiSearches ? 'hot' : '') + '">Web検索 <b>' + LB._aiSearches + '</b>回</span>' +
+      '<span class="' + (LB._aiCostYen ? 'hot' : '') + '">今日 <b>¥' + Math.round(LB._aiCostYen || 0).toLocaleString() + '</b></span>';
   },
 
   keyChanged: function () {
@@ -1898,11 +2004,11 @@ var UI = {
       var model = document.getElementById('lb-ai-model').value;
       var per = aiCostYen(model, 6000, 900, 3) / 8;
       var est = Math.round(per * n);
-      btn.textContent = 'Webから探す（' + n.toLocaleString() + '件）';
-      note.textContent = '概算 ≒ ¥' + est.toLocaleString() + '　上限に達したら自動で止まります';
+      btn.textContent = 'Webから探す';
+      note.textContent = n.toLocaleString() + '件ぶん 概算 ≒ ¥' + est.toLocaleString() + '・上限で自動停止';
     } else {
-      btn.textContent = 'この名簿から探す（' + n.toLocaleString() + '件）';
-      note.textContent = '無料。通信もしません。';
+      btn.textContent = 'この名簿から探す';
+      note.textContent = '無料・通信なし';
     }
   },
 
@@ -1923,8 +2029,10 @@ var UI = {
     }).join('');
     var kws = LB.collectCriteria().name_keywords;
     document.getElementById('kw-line').innerHTML = kws.length
-      ? '社名に <b>' + esc(kws.slice(0, 6).join('・')) + (kws.length > 6 ? '…' : '') + '</b> を含む会社を集めます'
-      : '業種を入れてください';
+      ? '<span class="kw-t">社名に含む語 ' + kws.length + '</span>' +
+        kws.slice(0, 8).map(function (k) { return '<span class="kw-b">' + esc(k) + '</span>'; }).join('') +
+        (kws.length > 8 ? '<span class="kw-b">…</span>' : '')
+      : '';
     // エリアのチェック状態も入力に合わせる
     var prefs = document.getElementById('lb-prefectures').value
       .split(',').map(function (s) { return s.trim(); }).filter(Boolean);
@@ -2011,7 +2119,7 @@ var UI = {
   countHint: function () {
     var n = parseInt(document.getElementById('lb-count').value, 10) || 0;
     document.getElementById('count-hint').textContent =
-      LB._pool.length ? '手元の候補 ' + LB._pool.length.toLocaleString() + '社から選びます' : '';
+      LB._pool.length ? '候補 ' + LB._pool.length.toLocaleString() + '社' : '';
   },
   recount: function () { this.countHint(); this.runButton(); },
 
@@ -2024,6 +2132,7 @@ var UI = {
     this.receipt(files.length + 'ファイル・' +
       (LB._shape.encoding === 'shift_jis' ? 'Shift_JIS' : 'UTF-8') + 'と判定・' +
       (LB._shape.nta ? '国税庁の法人番号データ形式' : LB._shape.recognized ? '列を認識しました' : '列を認識できません'));
+    this.columns();
   },
   sourceLine: function (label) {
     var el = document.getElementById('lb-file-label');
@@ -2046,7 +2155,7 @@ var UI = {
       g.classList.toggle('is-off', off);
       var n = document.getElementById(note);
       n.classList.toggle('hidden', !off);
-      if (off) n.innerHTML = '<b>！</b><span>いま選んでいるデータに、この列がありません。この条件は使えません。</span>';
+      if (off) n.innerHTML = '<b>！</b><span>このデータに この列がありません</span>';
     };
     if (!s) { set('grp-emp', 'note-emp', false); set('grp-cap', 'note-cap', false); return; }
     set('grp-emp', 'note-emp', !s.hasEmployee);
@@ -2072,7 +2181,7 @@ var UI = {
     document.getElementById('lb-progress-card').classList.toggle('hidden', !on);
     if (on) {
       document.getElementById('lb-empty').classList.add('hidden');
-      document.getElementById('lb-progress-text').textContent = '読み込んでいます…';
+      document.getElementById('lb-progress-text').textContent = '0行を確認';
     }
   },
   aiRunning: function (on) {
@@ -2101,6 +2210,7 @@ var UI = {
     var c = document.getElementById('tp-cost-chip');
     c.textContent = '今日 ¥' + Math.round(yen).toLocaleString();
     c.classList.toggle('is-spending', yen > 0);
+    this.meter();
   },
 
   /* ---- 結果 ---- */
@@ -2173,22 +2283,49 @@ var UI = {
       notes.map(function (p) { return '<li class="' + p[0] + '">' + esc(p[1]) + '</li>'; }).join('') +
       '<li class="sp"></li>' + (n ? '<li><button onclick="UI.info(\'recipe\')">このリストの作り方</button></li>' : '');
     this.countHint();
+    this.meter();
+    var ai = document.getElementById('btn-ai');
+    if (!ai.classList.contains('hidden')) {
+      var model = document.getElementById('lb-ai-model').value;
+      var per = aiCostYen(model, 1800, 200, 1);
+      var t = n - withPhone;
+      ai.textContent = '電話番号を調べる ' + t.toLocaleString() + '社 ≒¥' + Math.round(per * t).toLocaleString();
+    }
   },
 
   /* ---- 見積り ---- */
   openAi: function (mode) {
     this._mode = mode === 'discover' ? 'discover' : 'enrich';
     var d = this._mode === 'discover';
-    document.getElementById('ai-title').textContent = d ? 'AIに探させる' : '電話番号を調べる';
-    document.getElementById('ai-lead').textContent = d
-      ? 'AIがWebを検索して、条件に合う会社そのものを探します。社名・所在地・電話番号まで集めます。'
-      : '1社ずつWebを検索して、公式サイトと代表電話を特定します。telepy で有料なのはこの工程だけです。';
+    document.getElementById('ai-title').textContent = d ? 'Webから探す' : '電話番号を調べる';
     document.getElementById('lb-ai-limit').parentNode.classList.toggle('hidden', d);
     document.getElementById('lb-ai-progress').classList.add('hidden');
     this.quote();
+    this.limitChips();
     document.getElementById('dlg-ai').showModal();
   },
   aiGo: function () { if (this._mode === 'discover') LB.discover(); else LB.aiEnrich(); },
+  limitChips: function () {
+    var box = document.getElementById('tp-limit-chips');
+    if (!box || this._mode === 'discover') { if (box) box.innerHTML = ''; return; }
+    var model = document.getElementById('lb-ai-model').value;
+    var per = LB._aiCalls > 0
+      ? aiCostYen(model, LB._aiIn / LB._aiCalls, LB._aiOut / LB._aiCalls, LB._aiSearches / LB._aiCalls)
+      : aiCostYen(model, 1800, 200, 1);
+    var t = LB.companies.filter(function (c) { return !c.phone_number; }).length;
+    var cur = document.getElementById('lb-ai-limit').value;
+    box.innerHTML = [10, 50, 100, 0].map(function (v) {
+      var n = v > 0 ? Math.min(v, t) : t;
+      if (v > 0 && v > t) return '';
+      return '<button type="button" class="' + (String(v) === cur ? 'on' : '') + '" onclick="UI.setLimit(' + v + ')">' +
+        (v > 0 ? v + '社' : '全部 ' + t.toLocaleString() + '社') + ' ≒¥' + Math.round(per * n).toLocaleString() + '</button>';
+    }).join('');
+  },
+  setLimit: function (v) {
+    document.getElementById('lb-ai-limit').value = String(v);
+    this.limitChips(); this.quote();
+  },
+
   quote: function () {
     var model = (document.getElementById('lb-ai-model') || {}).value || 'claude-haiku-4-5';
     var per = LB._aiCalls > 0

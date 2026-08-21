@@ -89,10 +89,15 @@ check('名簿を持っていなくても探せる状態で始まる',
   /Webから探す/.test(await page.textContent('#lb-run')), await page.textContent('#lb-run'));
 check('押す前に金額が出る', /≒ ¥[\d,]+/.test(await page.textContent('#run-note')),
   await page.textContent('#run-note'));
-check('名簿は要らないと明記', /名簿は要りません/.test(await page.textContent('#method-hint')), '');
+check('名簿は要らないと明記', /名簿不要/.test(await page.textContent('#method-hint')),
+  await page.textContent('#method-hint'));
 check('データ元の行は出さない', !(await page.isVisible('#src-row')), '');
+check('よく使う条件が最初から並ぶ', (await page.$$('#tp-presets .preset')).length >= 3, '');
+// 「読み取りはAIではない」を否定文ではなく計器で示す
+check('計器がAI0回から始まる', /AI\s*0\s*回/.test((await page.textContent('#tp-meter')).replace(/\s+/g,' ')),
+  await page.textContent('#tp-meter'));
 check('規模はAIへの希望として伝えると書く',
-  /希望として伝えます/.test(await page.textContent('#note-emp')), await page.textContent('#note-emp'));
+  /希望として伝達/.test(await page.textContent('#note-emp')), await page.textContent('#note-emp'));
 check('規模の欄は塞がない', !(await page.isDisabled('#lb-emp-min')), '');
 
 // 依頼文 → 条件（チップとチェックに反映されるか）
@@ -102,6 +107,9 @@ check('業種がチップになる', (await page.$$('#tag-list .tag')).length ==
 const checked = await page.$$eval('#area-list input:checked', a=>a.map(x=>x.value));
 check('エリアがチェックに入る', checked.length===4 && checked.includes('東京都'), JSON.stringify(checked));
 check('件数が入る', await page.inputValue('#lb-count')==='1000', await page.inputValue('#lb-count'));
+check('依頼文を読んでも計器は0のまま',
+  /AI\s*0\s*回/.test((await page.textContent('#tp-meter')).replace(/\s+/g,' ')),
+  await page.textContent('#tp-meter'));
 check('貼り付け欄が畳まれる', !(await page.getAttribute('#lb-inquiry','class')).includes('tall'), '');
 
 // 名簿から探すに切り替えると、データ元の行が出る
@@ -109,6 +117,8 @@ await page.click('[data-m="local"]'); await page.waitForTimeout(300);
 check('名簿に切り替えるとデータ元が出る', await page.isVisible('#src-row'), '');
 check('名簿は無料だと書く', /無料/.test(await page.textContent('#run-note')),
   await page.textContent('#run-note'));
+check('実行ボタンに件数を入れない', !/\d/.test(await page.textContent('#lb-run')),
+  await page.textContent('#lb-run'));
 
 // データを渡す → 使えない条件が「その欄」に出る
 await page.setInputFiles('#lb-file', B+'/nta_test.csv'); await page.waitForTimeout(1000);
@@ -118,6 +128,9 @@ check('欄のすぐ横に理由が出る', /この列がありません/.test(aw
   await page.textContent('#note-emp'));
 check('データ元が左下に出る', /nta_test/.test(await page.textContent('#lb-file-label')),
   await page.textContent('#lb-file-label'));
+const cols = (await page.textContent('#tp-columns')).replace(/\s+/g,' ');
+check('名簿が持つ列を記号と列名で示す',
+  /✓ 社名/.test(cols) && /✕ 電話番号/.test(cols) && /✕ 資本金/.test(cols), cols);
 
 // 探す
 await page.click('#lb-run'); await page.waitForTimeout(2500);
@@ -129,6 +142,11 @@ check('詳細CSVは押せる', !(await page.isDisabled('#tp-dl-detail')), '');
 check('電話番号が無いことを脚に出す', /電話番号は元データに含まれません/.test(await page.textContent('#lb-note')),
   await page.textContent('#lb-note'));
 check('資本金が効かなかったことも出す', /資本金の条件は使えませんでした/.test(await page.textContent('#lb-note')), '');
+check('名簿だけで探せば計器は0のまま',
+  /AI\s*0\s*回/.test((await page.textContent('#tp-meter')).replace(/\s+/g,' ')),
+  await page.textContent('#tp-meter'));
+check('電話番号を調べるボタンに件数と金額が載る',
+  /\d+社 ≒¥[\d,]+/.test(await page.textContent('#btn-ai')), await page.textContent('#btn-ai'));
 
 // 件数を変えたら走査せず即反映
 const before = await page.$$eval('#lb-tbody tr', r=>r.length);
@@ -300,6 +318,9 @@ check('名簿なしでWebから探せる', webRun.n === 6, JSON.stringify(webRun
 check('探した会社に電話番号が入っている', webRun.withTel === 6, JSON.stringify(webRun));
 check('実費が実測で出る', webRun.cost > 0, JSON.stringify(webRun));
 check('規模の希望がAIに伝わっている', webRun.sizeSent, JSON.stringify(webRun));
+check('AIを使ったら計器が動く',
+  !/AI\s*0\s*回/.test((await page.textContent('#tp-meter')).replace(/\s+/g,' ')),
+  await page.textContent('#tp-meter'));
 await page.waitForTimeout(500);
 check('架電用CSVがそのまま使える', !(await page.isDisabled('#tp-dl-call')), '');
 check('結果の見出しに電話番号の数が出る', /6/.test(await page.textContent('#lb-result-title')),
