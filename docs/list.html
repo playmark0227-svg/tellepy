@@ -180,6 +180,18 @@
     }
     .grp-note b { font-weight: 700; }
 
+    /* 探し方の切り替え */
+    .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+           border: 1px solid var(--line-2); border-radius: var(--r); overflow: hidden; }
+    .seg button {
+      font: inherit; font-size: 12px; font-weight: 600; color: var(--text-2);
+      background: var(--surface); border: 0; padding: 8px 4px; cursor: pointer;
+      transition: background .14s var(--ease), color .14s var(--ease);
+    }
+    .seg button + button { border-left: 1px solid var(--line-2); }
+    .seg button:hover { background: var(--sunk); }
+    .seg button.on { background: var(--accent); color: #fff; }
+
     /* 業種チップ */
     .tags { display: flex; flex-wrap: wrap; gap: 6px; }
     .tag {
@@ -450,6 +462,15 @@
       <div class="rail-scroll">
 
         <div class="grp">
+          <div class="grp-t"><span>探し方</span></div>
+          <div class="seg" id="method">
+            <button type="button" class="on" data-m="web" onclick="UI.method('web')">Webから探す</button>
+            <button type="button" data-m="local" onclick="UI.method('local')">名簿から探す</button>
+          </div>
+          <p class="hint" id="method-hint"></p>
+        </div>
+
+        <div class="grp">
           <div class="grp-t"><span>業種</span></div>
           <div class="tags" id="tag-list"></div>
           <button class="tag-add" id="tag-add" onclick="UI.addTag()">＋ 追加</button>
@@ -499,7 +520,25 @@
           <p class="hint" id="count-hint"></p>
         </div>
 
-        <div class="grp">
+        <div class="grp hidden" id="grp-key">
+          <div class="grp-t"><span>Anthropic APIキー</span></div>
+          <input type="password" id="lb-ai-key" placeholder="sk-ant-api03-..." oninput="UI.keyChanged()">
+          <p class="hint">この端末にだけ保存され、あなたのキーで直接 Anthropic に問い合わせます。
+            <a href="https://platform.claude.com/" target="_blank" rel="noopener">発行はこちら</a></p>
+        </div>
+
+        <div class="grp hidden" id="grp-ai">
+          <div class="grp-t"><span>AIの設定</span></div>
+          <select id="lb-ai-model" onchange="UI.quote()">
+            <option value="claude-haiku-4-5">標準（安い）</option>
+            <option value="claude-sonnet-5">高精度（高い）</option>
+          </select>
+          <p class="hint" style="margin:8px 0 4px">使いすぎ防止の上限</p>
+          <input type="number" id="lb-ai-budget" value="1000000" min="0" step="100000" oninput="UI.budgetHint()">
+          <p class="hint" id="lb-budget-hint"></p>
+        </div>
+
+        <div class="grp" id="grp-detail">
           <div class="grp-t"><span>詳細</span></div>
           <label class="ck"><input type="checkbox" id="lb-unknown" checked><span>従業員数が不明な会社も含める</span></label>
           <label class="ck"><input type="checkbox" id="lb-strict-cap"><span>資本金が不明な会社は外す</span></label>
@@ -507,11 +546,12 @@
       </div>
 
       <div class="rail-foot">
-        <div class="src">
+        <div class="src" id="src-row">
           <b id="lb-file-label">データ元を確認中…</b>
           <button onclick="UI.openData()">変更</button>
         </div>
-        <button class="btn btn-go btn-lg" id="lb-run" onclick="LB.run()">この条件で探す</button>
+        <button class="btn btn-go btn-lg" id="lb-run" onclick="LB.run()">Webから探す</button>
+        <p class="hint" id="run-note" style="text-align:center;margin-top:8px"></p>
       </div>
     </aside>
 
@@ -601,33 +641,13 @@
   <div class="dlg-b" id="lb-ai-card">
     <div class="price-row"><b id="tp-quote-amt">¥0</b><span id="tp-quote-sub"></span></div>
     <p id="ai-lead"></p>
-    <div class="two" style="margin-top:16px">
-      <div class="field">
-        <label for="lb-ai-limit">調べる件数</label>
-        <select id="lb-ai-limit" onchange="UI.quote()">
-          <option value="10">10社だけ試す</option><option value="50">50社</option>
-          <option value="100">100社</option><option value="0">全部</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="lb-ai-model">精度</label>
-        <select id="lb-ai-model" onchange="UI.quote()">
-          <option value="claude-haiku-4-5">標準（安い）</option>
-          <option value="claude-sonnet-5">高精度（高い）</option>
-        </select>
-      </div>
-    </div>
-    <div class="two">
-      <div class="field">
-        <label for="lb-ai-budget">上限トークン（0＝上限なし）</label>
-        <input type="number" id="lb-ai-budget" value="1000000" min="0" step="100000" oninput="UI.budgetHint()">
-        <p class="hint" id="lb-budget-hint"></p>
-      </div>
-      <div class="field">
-        <label for="lb-ai-key">Anthropic APIキー</label>
-        <input type="password" id="lb-ai-key" placeholder="sk-ant-api03-..." oninput="UI.quote()">
-        <p class="hint">この端末にだけ保存され、あなたのキーで直接 Anthropic に問い合わせます。</p>
-      </div>
+    <div class="field" style="margin-top:16px">
+      <label for="lb-ai-limit">調べる件数</label>
+      <select id="lb-ai-limit" onchange="UI.quote()">
+        <option value="10">10社だけ試す</option><option value="50">50社</option>
+        <option value="100">100社</option><option value="0">全部</option>
+      </select>
+      <p class="hint">モデルと上限は左の「AIの設定」で変えられます。</p>
     </div>
     <div class="meter hidden" id="tp-cost-meter"><i></i></div>
     <p class="hint hidden" id="tp-cost-label"></p>
@@ -1522,14 +1542,20 @@ var LB = {
   /* 探す。どこから探すかは聞かない。使えるものを自分で選ぶ。 */
   run: async function () {
     var criteria = this.collectCriteria();
-    if (!criteria.name_keywords.length && !criteria.industries.length) {
+    var inquiry = (document.getElementById('lb-inquiry').value || '').trim();
+    if (!criteria.name_keywords.length && !criteria.industries.length && !inquiry) {
       toast('業種を1つ以上入れてください', 'error'); UI.tab('cond');
-      document.getElementById('tag-add').focus(); return;
+      UI.addTag(); return;
     }
+    // Webから探す：名簿は要らない。ここが既定。
+    if (UI._method === 'web') return this.discover();
     if (!this._files || !this._files.length) {
       if (CX.seed) { if (!await CX.useSeed()) return; }
-      else { UI.openAi('discover'); return; }
+      else { UI.openData(); return; }
       criteria = this.collectCriteria();
+    }
+    if (!criteria.name_keywords.length && !criteria.industries.length) {
+      toast('名簿から探すときは業種の言葉が要ります', 'error'); UI.addTag(); return;
     }
     this._sampleRun = this._files.every(function (f) { return !!f._tpSample; });
 
@@ -1606,7 +1632,13 @@ var LB = {
       toast('業種を入れてください', 'error'); return;
     }
     var apiKey = (document.getElementById('lb-ai-key').value || '').trim();
-    if (!apiKey) { toast('Anthropic APIキーを入れてください', 'error'); document.getElementById('lb-ai-key').focus(); return; }
+    if (!apiKey) {
+      toast('WebからはAIが探すので、Anthropic APIキーが要ります', 'error');
+      UI.tab('cond');
+      document.getElementById('grp-key').classList.remove('hidden');
+      document.getElementById('lb-ai-key').focus();
+      return;
+    }
     if (apiKey.indexOf('sk-ant-') !== 0) { toast('キーの形式が違うようです（sk-ant-で始まります）', 'error'); return; }
     localStorage.setItem('telepy_anthropic_key', apiKey);
 
@@ -1782,6 +1814,7 @@ var COMMON_PREFS = ['東京都', '神奈川県', '千葉県', '埼玉県', '大�
 var UI = {
   _allAreas: false,
   _mode: 'enrich',
+  _method: 'web',        // 既定は「Webから探す」。名簿を用意させない。
 
   /* ---- 起動 ---- */
   init: function () {
@@ -1802,7 +1835,8 @@ var UI = {
     document.getElementById('lb-count').addEventListener('change', function () { LB.reslice(); });
     CX.loadManifest().then(function () { UI.sourceLine(); });
     this.theme(true);
-    this.render();   // ボタンの見た目を最初から正しい状態にする
+    this.method('web');   // 名簿を持っていなくても、開いた瞬間から探せる状態にする
+    this.render();
   },
 
   theme: function (initOnly) {
@@ -1814,6 +1848,62 @@ var UI = {
     }
     document.querySelector('.i-moon').classList.toggle('hidden', cur === 'dark');
     document.querySelector('.i-sun').classList.toggle('hidden', cur !== 'dark');
+  },
+
+  /* 探し方を切り替える。名簿を持っていない人が既定で使えるようにする。 */
+  method: function (m) {
+    this._method = m;
+    Array.prototype.forEach.call(document.querySelectorAll('#method button'), function (b) {
+      b.classList.toggle('on', b.getAttribute('data-m') === m);
+    });
+    var web = m === 'web';
+    document.getElementById('method-hint').textContent = web
+      ? 'AIが会社のホームページを見つけて、社名・住所・電話番号まで拾います。名簿は要りません。'
+      : '国税庁データなどの名簿から絞り込みます。無料。電話番号は入っていません。';
+    document.getElementById('src-row').classList.toggle('hidden', web);
+    document.getElementById('grp-ai').classList.toggle('hidden', !web);
+    document.getElementById('grp-detail').classList.toggle('hidden', web);
+    var hasKey = false;
+    try { hasKey = !!(document.getElementById('lb-ai-key').value || localStorage.getItem('telepy_anthropic_key')); } catch (e) {}
+    document.getElementById('grp-key').classList.toggle('hidden', !web || hasKey);
+    if (web) {
+      // 規模はAIへの注文として伝えられる。ただし裏取りはできないので、
+      // 「絞り込み」ではなく「希望として伝える」と正直に書く。
+      ['lb-emp-min', 'lb-emp-max', 'cap-sel'].forEach(function (id) {
+        document.getElementById(id).disabled = false;
+      });
+      document.getElementById('grp-emp').classList.remove('is-off');
+      document.getElementById('grp-cap').classList.remove('is-off');
+      var msg = '<b>！</b><span>AIへの希望として伝えます。ただし裏取りはできないので、外れる会社も混ざります。</span>';
+      var n1 = document.getElementById('note-emp'), n2 = document.getElementById('note-cap');
+      n1.classList.remove('hidden'); n2.classList.remove('hidden');
+      n1.innerHTML = msg; n2.innerHTML = msg;
+    } else {
+      this.limits();
+    }
+    this.runButton();
+  },
+
+  keyChanged: function () {
+    try { var v = document.getElementById('lb-ai-key').value.trim();
+          if (v) localStorage.setItem('telepy_anthropic_key', v); } catch (e) {}
+    this.runButton();
+  },
+
+  /* 実行ボタンは、これから起きることと金額をそのまま出す */
+  runButton: function () {
+    var btn = document.getElementById('lb-run'), note = document.getElementById('run-note');
+    var n = parseInt(document.getElementById('lb-count').value, 10) || 100;
+    if (this._method === 'web') {
+      var model = document.getElementById('lb-ai-model').value;
+      var per = aiCostYen(model, 6000, 900, 3) / 8;
+      var est = Math.round(per * n);
+      btn.textContent = 'Webから探す（' + n.toLocaleString() + '件）';
+      note.textContent = '概算 ≒ ¥' + est.toLocaleString() + '　上限に達したら自動で止まります';
+    } else {
+      btn.textContent = 'この名簿から探す（' + n.toLocaleString() + '件）';
+      note.textContent = '無料。通信もしません。';
+    }
   },
 
   tab: function (which) {
@@ -1849,6 +1939,7 @@ var UI = {
     var sel = document.getElementById('cap-sel');
     sel.value = [].some.call(sel.options, function (o) { return o.value === cap; }) ? cap : '';
     this.countHint();
+    this.runButton();
   },
   addTag: function () {
     var el = document.getElementById('tag-new');
@@ -1922,7 +2013,7 @@ var UI = {
     document.getElementById('count-hint').textContent =
       LB._pool.length ? '手元の候補 ' + LB._pool.length.toLocaleString() + '社から選びます' : '';
   },
-  recount: function () { this.countHint(); },
+  recount: function () { this.countHint(); this.runButton(); },
 
   /* ---- データ元と、走る前の宣告 ---- */
   useSource: async function (files, label) {
@@ -2122,7 +2213,7 @@ var UI = {
     document.getElementById('lb-budget-hint').textContent = b
       ? 'およそ ¥' + aiCostYen(model, b * .9, b * .1, 0).toLocaleString() + ' で自動的に止まります'
       : '上限なしで実行します';
-    this.quote();
+    this.quote(); this.runButton();
   },
 
   /* ---- 説明はここにだけ置く（画面には出さない） ---- */

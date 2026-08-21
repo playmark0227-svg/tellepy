@@ -85,6 +85,15 @@ check('起動時に押せないボタンが目立たない',
   await page.getAttribute('#tp-dl-call','class'));
 check('条件が最初から全部見えている',
   await page.isVisible('#area-list') && await page.isVisible('#lb-count') && await page.isVisible('#lb-run'), '');
+check('名簿を持っていなくても探せる状態で始まる',
+  /Webから探す/.test(await page.textContent('#lb-run')), await page.textContent('#lb-run'));
+check('押す前に金額が出る', /≒ ¥[\d,]+/.test(await page.textContent('#run-note')),
+  await page.textContent('#run-note'));
+check('名簿は要らないと明記', /名簿は要りません/.test(await page.textContent('#method-hint')), '');
+check('データ元の行は出さない', !(await page.isVisible('#src-row')), '');
+check('規模はAIへの希望として伝えると書く',
+  /希望として伝えます/.test(await page.textContent('#note-emp')), await page.textContent('#note-emp'));
+check('規模の欄は塞がない', !(await page.isDisabled('#lb-emp-min')), '');
 
 // 依頼文 → 条件（チップとチェックに反映されるか）
 await page.fill('#lb-inquiry','工務店、不動産のリスト。従業員10-20名、資本金1000万円以下、一都三県で1000件');
@@ -94,6 +103,12 @@ const checked = await page.$$eval('#area-list input:checked', a=>a.map(x=>x.valu
 check('エリアがチェックに入る', checked.length===4 && checked.includes('東京都'), JSON.stringify(checked));
 check('件数が入る', await page.inputValue('#lb-count')==='1000', await page.inputValue('#lb-count'));
 check('貼り付け欄が畳まれる', !(await page.getAttribute('#lb-inquiry','class')).includes('tall'), '');
+
+// 名簿から探すに切り替えると、データ元の行が出る
+await page.click('[data-m="local"]'); await page.waitForTimeout(300);
+check('名簿に切り替えるとデータ元が出る', await page.isVisible('#src-row'), '');
+check('名簿は無料だと書く', /無料/.test(await page.textContent('#run-note')),
+  await page.textContent('#run-note'));
 
 // データを渡す → 使えない条件が「その欄」に出る
 await page.setInputFiles('#lb-file', B+'/nta_test.csv'); await page.waitForTimeout(1000);
@@ -245,6 +260,50 @@ check('辞書に無い業種は条件が空になる（前提の確認）', unli
 check('それでも依頼文をAIに渡して探せる', unlisted.promptHasInquiry, JSON.stringify(unlisted));
 
 
+
+// 主導線（左下のボタン）から、名簿なしでWebから探せるか
+await page.evaluate(() => { LB._files = null; LB.companies = []; LB._pool = []; LB._lastOut = null;
+  LB._aiCalls = 0; LB._aiIn = 0; LB._aiOut = 0; LB._aiSearches = 0; });
+await page.click('[data-m="web"]'); await page.waitForTimeout(300);
+const webRun = await page.evaluate(async () => {
+  const real = window.fetch; let calls = 0;
+  let sentBody = null;
+  window.fetch = async (url, opt) => {
+    if (String(url).indexOf('api.anthropic.com') === -1) return real(url, opt);
+    calls++; sentBody = JSON.parse(opt.body);
+    const list = calls > 2 ? [] : [1, 2, 3].map(k => ({
+      name: '株式会社サンプル工務店' + (calls * 10 + k),
+      location: '東京都港区' + k, prefecture: '東京都',
+      phone_number: '03-1234-' + String(1000 + calls * 10 + k),
+      company_url: 'https://ex' + k + '.example.jp',
+      source_url: 'https://ex' + k + '.example.jp/company'
+    }));
+    return { ok: true, json: async () => ({
+      content: [{ type: 'text', text: JSON.stringify({ companies: list }) }],
+      usage: { input_tokens: 6000, output_tokens: 900, server_tool_use: { web_search_requests: 3 } } }) };
+  };
+  document.getElementById('lb-ai-key').value = 'sk-ant-test-key';
+  document.getElementById('lb-industries').value = '工務店';
+  document.getElementById('lb-keywords').value = '';
+  document.getElementById('lb-prefectures').value = '東京都';
+  document.getElementById('lb-count').value = '20';
+  document.getElementById('lb-emp-min').value = '10';
+  document.getElementById('lb-emp-max').value = '20';
+  UI.syncFromInputs();
+  await LB.run();                       // ← 左下の主ボタンと同じ経路
+  window.fetch = real;
+  return { n: LB.companies.length, withTel: LB.companies.filter(c => c.phone_number).length,
+           calls, cost: LB._aiCostYen,
+           sizeSent: /従業員数 10〜20名/.test(sentBody ? sentBody.messages[0].content : '') };
+});
+check('名簿なしでWebから探せる', webRun.n === 6, JSON.stringify(webRun));
+check('探した会社に電話番号が入っている', webRun.withTel === 6, JSON.stringify(webRun));
+check('実費が実測で出る', webRun.cost > 0, JSON.stringify(webRun));
+check('規模の希望がAIに伝わっている', webRun.sizeSent, JSON.stringify(webRun));
+await page.waitForTimeout(500);
+check('架電用CSVがそのまま使える', !(await page.isDisabled('#tp-dl-call')), '');
+check('結果の見出しに電話番号の数が出る', /6/.test(await page.textContent('#lb-result-title')),
+  await page.textContent('#lb-result-title'));
 
 // 料金と作り方
 await page.click('text=料金'); await page.waitForTimeout(400);

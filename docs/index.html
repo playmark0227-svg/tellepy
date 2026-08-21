@@ -144,9 +144,11 @@
     .fl-ck { font-size: 11.5px; } .fl-ck b { color: var(--seal); }
     .fl-in { font-size: 12px; border: 1px solid var(--rule-2); border-radius: 3px;
              padding: 5px 9px; color: var(--ink-3); }
-    .fl-warn { font-size: 10.5px; line-height: 1.6; color: var(--warn); background: #F8F1DF;
-               padding: 6px 8px; border-radius: 3px; margin-top: 6px; }
-    :root[data-theme="dark"] .fl-warn { background: #262010; }
+    .fl-seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--rule-2);
+              border-radius: 3px; overflow: hidden; font-size: 11px; font-weight: 600; text-align: center; }
+    .fl-seg b { background: var(--seal); color: #fff; padding: 6px 2px; }
+    .fl-seg span { color: var(--ink-3); padding: 6px 2px; }
+    .fl-note { font-size: 10px; color: var(--ink-3); text-align: center; margin-top: 6px; line-height: 1.6; }
     .fl-go { margin-top: 18px; text-align: center; font-size: 12px; font-weight: 700;
              color: #fff; background: var(--seal); border-radius: 3px; padding: 10px; }
     .fr-hero { font-size: 26px; font-weight: 700; letter-spacing: -.02em; }
@@ -267,7 +269,7 @@
   <div class="wrap">
     <p class="label">架電リスト作成</p>
     <h1>依頼文を貼れば、<br><em>架電リストになる。</em></h1>
-    <p class="lead">お客様からの依頼文を、書き換えずにそのまま貼るだけ。条件に合う日本企業を<b>この端末の中で</b>探します。電話番号だけは、<b>AIが1社ずつWebを調べて</b>埋めます。</p>
+    <p class="lead">お客様からの依頼文を、書き換えずにそのまま貼るだけ。<b>名簿を用意する必要はありません。</b>AIが会社のホームページをWebから見つけて、社名・所在地・<b>電話番号まで</b>拾います。</p>
     <div class="cta">
       <a class="btn btn-primary" href="list.html">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"><path d="M4 12h15M13 6l6 6-6 6"/></svg>
@@ -275,7 +277,7 @@
       </a>
       <a class="btn btn-quiet" href="#price">料金を見る</a>
     </div>
-    <p class="hero-note">インストール不要・ブラウザだけで動作。会社を探して名簿にするところまでは、ずっと無料です。</p>
+    <p class="hero-note">インストール不要・ブラウザだけで動作。1,000社で概算 ¥800、上限に達したら自動で止まります。</p>
 
     <div class="frame reveal">
       <div class="frame-bar">
@@ -284,16 +286,16 @@
       </div>
       <div class="frame-body">
         <div class="frame-left">
+          <p class="fl-h">探し方</p>
+          <p class="fl-seg"><b>Webから探す</b><span>名簿から探す</span></p>
           <p class="fl-h">業種</p>
           <p class="fl-tags"><span>工務店</span><span>不動産</span><span class="add">＋</span></p>
           <p class="fl-h">エリア</p>
           <p class="fl-ck"><b>☑</b>東京　<b>☑</b>神奈川　<b>☑</b>千葉　<b>☑</b>埼玉</p>
-          <p class="fl-h">従業員数</p>
-          <p class="fl-in">10 〜 20</p>
-          <p class="fl-warn">！ いま選んでいるデータに、この列がありません</p>
           <p class="fl-h">件数</p>
           <p class="fl-in">1,000</p>
-          <p class="fl-go">この条件で探す</p>
+          <p class="fl-go">Webから探す（1,000件）</p>
+          <p class="fl-note">概算 ≒ ¥800　上限に達したら自動で止まります</p>
         </div>
         <div class="frame-right">
           <div class="fr-head">
@@ -329,18 +331,18 @@
         </div>
         <div class="row reveal">
           <span class="no">02</span>
-          <h3>効かない条件は、先に言う</h3>
-          <p>走らせる前に「この名簿では資本金で絞れません」と宣告します。<b>数分待った末に0件、が起きません。</b>✗の隣には必ず、どうすればいいかのボタンを置いています。</p>
+          <h3>名簿は要りません</h3>
+          <p>CSVを探してくる必要も、zipを解凍する必要もありません。<b>AIが公開されているホームページを見つけて、そこから社名・所在地・電話番号を拾います。</b>手元に名簿がある場合は、そちらから無料で絞り込むこともできます。</p>
         </div>
         <div class="row reveal">
           <span class="no">03</span>
-          <h3>足りなければ、AIが探しに行く</h3>
-          <p>手元にデータが無くても止まりません。<b>AIがWebを検索して会社そのものを探し</b>、社名・所在地・電話番号まで一度に集めます。出どころのURLを示せない会社は採用しません。</p>
+          <h3>出どころを示せない会社は入れない</h3>
+          <p>AIは「それらしい社名」を作れてしまいます。だから telepy は、<b>検索結果で実在を確認できて、出どころのURLを示せた会社だけ</b>を残します。新しい会社が出てこなくなったら、数合わせをせずそこで止めます。</p>
         </div>
         <div class="row reveal">
           <span class="no">04</span>
           <h3>分かっていないことを、隠さない</h3>
-          <p>電話番号が0件なら「架電できる 0 / 1,000 社」と出します。<b>取れなかった数も、AIが判断した行も、必ず表示します。</b>そのまま上司とクライアントに見せられる状態で渡します。</p>
+          <p>電話番号が取れなかった会社は空欄のまま出します。<b>AIが判断した行には印が付き、規模の条件は「希望として伝えただけ」と明示します。</b>そのまま上司とクライアントに見せられる状態で渡します。</p>
         </div>
       </div>
     </div>
@@ -357,12 +359,12 @@
         <div class="free">
           <p class="tag">無料</p>
           <p class="amt">¥0</p>
-          <p>会社を探して名簿にするところまで。内蔵データ・手元のCSV/zip・絞り込み・詳細CSVの書き出し。この端末の中だけで動きます。</p>
+          <p>手元の名簿（国税庁データ等）から絞り込む場合。CSV/zipの読み込み・絞り込み・CSVの書き出し。この端末の中だけで動き、通信もしません。</p>
         </div>
         <div class="paid">
           <p class="tag">従量</p>
-          <p class="amt">¥3〜40 <small>/ 社</small></p>
-          <p>電話番号と公式サイトを1社ずつ調べる工程だけ。あなたの Anthropic APIキーで直接課金され、telepy は一切受け取りません。</p>
+          <p class="amt">¥0.8 <small>/ 社〜</small></p>
+          <p>WebからAIに探させる場合（1,000社で概算 ¥800）。名簿の会社に電話番号だけ足す場合は 1社 ¥3〜40。あなたの Anthropic APIキーで直接課金され、telepy は一切受け取りません。</p>
         </div>
       </div>
       <div class="note-box reveal">
