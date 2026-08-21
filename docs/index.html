@@ -42,9 +42,9 @@
       --serif: "Hiragino Mincho ProN", "Hiragino Mincho Pro", "BIZ UDPMincho", "BIZ UDMincho",
                "Yu Mincho", YuMincho, "Noto Serif JP", "Times New Roman", serif;
       --mono: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      --paper: #FBF9F5; --surface: #FFFFFF; --sunk: #F4F1EA;
-      --ink: #191612; --ink-2: #58524A; --ink-3: #8B8376;
-      --rule: #E4DFD4; --rule-2: #CFC8B9;
+      --paper: #F5F4F1; --surface: #FFFFFF; --sunk: #EFEEEA;
+      --ink: #17191C; --ink-2: #5A6169; --ink-3: #8B9198;
+      --rule: #E0E1DE; --rule-2: #C9CBC6;
       --seal: #A6402A; --seal-2: #8C3422; --seal-tint: #F6ECE8;
       --good: #2E6A4C; --warn: #8A6212;
       --btn-face: #191612; --btn-text: #FBF9F5;
@@ -52,9 +52,9 @@
       color-scheme: light;
     }
     :root[data-theme="dark"] {
-      --paper: #131110; --surface: #1A1816; --sunk: #211E1B;
-      --ink: #EDE8DF; --ink-2: #A8A197; --ink-3: #7C756B;
-      --rule: #2C2825; --rule-2: #3E3833;
+      --paper: #16181A; --surface: #1D1F22; --sunk: #232629;
+      --ink: #E9EAEA; --ink-2: #A3A8AD; --ink-3: #767C82;
+      --rule: #2C3033; --rule-2: #3D4247;
       --seal: #DD7357; --seal-2: #E9917A; --seal-tint: #2A1E1A;
       --good: #5FA97F; --warn: #C79A46;
       --btn-face: #EDE8DF; --btn-text: #131110;
@@ -133,7 +133,28 @@
     .frame-url { margin-left: 12px; font-size: 11px; color: var(--ink-3); letter-spacing: .06em; }
     .frame-body { display: grid; grid-template-columns: 1fr 1.15fr; }
     @media (max-width: 800px) { .frame-body { grid-template-columns: 1fr; } }
-    .frame-left { padding: 26px 26px 30px; border-right: 1px solid var(--rule); }
+    .frame-body { grid-template-columns: 250px 1fr; }
+    .frame-left { padding: 18px 18px 20px; border-right: 1px solid var(--rule); }
+    .fl-h { font-size: 10px; font-weight: 700; letter-spacing: .12em; color: var(--ink-3);
+            margin: 14px 0 6px; }
+    .fl-h:first-child { margin-top: 0; }
+    .fl-tags span { display: inline-block; font-size: 11.5px; background: var(--sunk);
+                    padding: 3px 9px; border-radius: 3px; margin-right: 5px; }
+    .fl-tags .add { background: none; border: 1px dashed var(--rule-2); color: var(--ink-3); }
+    .fl-ck { font-size: 11.5px; } .fl-ck b { color: var(--seal); }
+    .fl-in { font-size: 12px; border: 1px solid var(--rule-2); border-radius: 3px;
+             padding: 5px 9px; color: var(--ink-3); }
+    .fl-warn { font-size: 10.5px; line-height: 1.6; color: var(--warn); background: #F8F1DF;
+               padding: 6px 8px; border-radius: 3px; margin-top: 6px; }
+    :root[data-theme="dark"] .fl-warn { background: #262010; }
+    .fl-go { margin-top: 18px; text-align: center; font-size: 12px; font-weight: 700;
+             color: #fff; background: var(--seal); border-radius: 3px; padding: 10px; }
+    .fr-hero { font-size: 26px; font-weight: 700; letter-spacing: -.02em; }
+    .fr-hero small { font-size: 12px; font-weight: 500; color: var(--ink-3); }
+    .fr-sub { font-size: 12px; color: var(--ink-2); } .fr-sub b { color: var(--ink); }
+    .fr-btn { margin-left: auto; font-size: 11px; font-weight: 700; color: #fff;
+              background: var(--ink); border-radius: 3px; padding: 7px 12px; }
+    .fr-row .mute { color: var(--ink-3); }
     @media (max-width: 800px) { .frame-left { border-right: 0; border-bottom: 1px solid var(--rule); } }
     .frame-voice { font-family: var(--serif); font-size: 14px; line-height: 2.0; color: var(--ink); }
     .frame-voice b { border-bottom: 1px solid var(--seal); }
@@ -144,14 +165,14 @@
     .pf .ok i { color: var(--good); }
     .pf .ng i { color: var(--warn); }
     .frame-right { padding: 0; }
-    .fr-head { padding: 22px 26px 18px; border-bottom: 1px solid var(--ink);
-               display: flex; gap: 16px; align-items: center; }
+    .fr-head { padding: 16px 18px 14px; border-bottom: 1px solid var(--ink);
+               display: flex; gap: 12px; align-items: baseline; }
     .fr-ring { width: 46px; height: 46px; border: 2.5px solid var(--rule); border-radius: 99px;
                display: grid; place-items: center; font-size: 10px; font-weight: 700;
                border-top-color: var(--seal); border-right-color: var(--seal); }
     .fr-hero { font-size: 25px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
     .fr-hero small { font-size: 12px; font-weight: 500; color: var(--ink-3); }
-    .fr-row { display: grid; grid-template-columns: 1.4fr 1.6fr .8fr; gap: 14px; padding: 10px 26px;
+    .fr-row { display: grid; grid-template-columns: 1.4fr 1.6fr .8fr; gap: 14px; padding: 8px 18px;
               border-bottom: 1px solid var(--rule); font-size: 11.5px; }
     .fr-row b { font-weight: 600; }
     .fr-row span { color: var(--ink-3); }
@@ -259,32 +280,33 @@
     <div class="frame reveal">
       <div class="frame-bar">
         <span class="frame-dot"></span><span class="frame-dot"></span><span class="frame-dot"></span>
-        <span class="frame-url">telepy — 架電リストをつくる担当</span>
+        <span class="frame-url">telepy 架電リスト</span>
       </div>
       <div class="frame-body">
         <div class="frame-left">
-          <p class="frame-voice">1,000社そろいました。東京都 612・神奈川県 188・千葉県 104・埼玉県 96。<br><br>ただし、<b>この時点では1件も架電できません</b>。国税庁のデータに電話番号が入っていないためです。ここから先が、私の本番です。</p>
-          <div class="pf">
-            <div class="ok"><i>✓</i><span>社名に含まれる言葉 8語 — 適用します</span></div>
-            <div class="ok"><i>✓</i><span>エリア 4都県 — 適用します</span></div>
-            <div class="ng"><i>✗</i><span>資本金 上限¥10,000,000 — この名簿に資本金の列がありません</span></div>
-            <div class="ng"><i>✗</i><span>電話番号 — あとで1社ずつ調べます</span></div>
-          </div>
+          <p class="fl-h">業種</p>
+          <p class="fl-tags"><span>工務店</span><span>不動産</span><span class="add">＋</span></p>
+          <p class="fl-h">エリア</p>
+          <p class="fl-ck"><b>☑</b>東京　<b>☑</b>神奈川　<b>☑</b>千葉　<b>☑</b>埼玉</p>
+          <p class="fl-h">従業員数</p>
+          <p class="fl-in">10 〜 20</p>
+          <p class="fl-warn">！ いま選んでいるデータに、この列がありません</p>
+          <p class="fl-h">件数</p>
+          <p class="fl-in">1,000</p>
+          <p class="fl-go">この条件で探す</p>
         </div>
         <div class="frame-right">
           <div class="fr-head">
-            <span class="fr-ring">68%</span>
-            <span>
-              <span class="label" style="display:block">架電可能率</span>
-              <span class="fr-hero">架電できる 683 <small>/ 1,000 社</small></span>
-            </span>
+            <span class="fr-hero">1,000<small> 社</small></span>
+            <span class="fr-sub">｜電話番号 <b>683</b></span>
+            <span class="fr-btn">架電用CSV 683</span>
           </div>
           <div class="fr-row head"><span>会社名</span><span>所在地</span><span>電話番号</span></div>
-          <div class="fr-row"><b>株式会社まごころ工務店</b><span>東京都世田谷区北沢2-1-1</span><span>03-3427-****</span></div>
-          <div class="fr-row"><b>ハマノ不動産株式会社</b><span>神奈川県横浜市港北区1-2</span><span>045-540-****</span></div>
-          <div class="fr-row"><b>株式会社さくら建設</b><span>千葉県船橋市本町3-4-5</span><span>047-460-****</span></div>
-          <div class="fr-row"><b>むさし住宅株式会社</b><span>埼玉県川口市栄町1-2-3</span><span>048-250-****</span></div>
-          <div class="fr-row"><b>第一リフォーム株式会社</b><span>東京都大田区蒲田5-6-7</span><span>未取得</span></div>
+          <div class="fr-row"><b>株式会社まごころ工務店</b><span>東京都世田谷区北沢2-1-1</span><span>03-3427-1234</span></div>
+          <div class="fr-row"><b>ハマノ不動産株式会社</b><span>神奈川県横浜市港北区1-2</span><span>045-540-5678</span></div>
+          <div class="fr-row"><b>株式会社さくら建設</b><span>千葉県船橋市本町3-4-5</span><span>047-460-1111</span></div>
+          <div class="fr-row"><b>むさし住宅株式会社</b><span>埼玉県川口市栄町1-2-3</span><span>048-250-2222</span></div>
+          <div class="fr-row"><b>第一リフォーム株式会社</b><span>東京都大田区蒲田5-6-7</span><span class="mute">—</span></div>
         </div>
       </div>
     </div>

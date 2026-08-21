@@ -2,6 +2,9 @@
  *
  *   node test_docs_list_ui.mjs
  *
+ * 画面は「左に条件・右に結果」の1画面。見た目ではなく、
+ * 言っていることとやっていることが合うかを見る。
+ *
  * ここで見ているのは見た目ではなく「言っていることと、やっていることが合うか」。
  *   - 読み取りをAIと呼んでいないか（実際はルール解析）
  *   - 効かない条件を、走らせる前に宣告しているか
@@ -51,186 +54,92 @@ const EXE = process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium';
 
 
 const B = await mkdtemp(join(tmpdir(), 'telepy-ui-'));
-
-// 国税庁形式（ヘッダ無し30列）のテストデータを作る
-const names = ['まごころ工務店', 'ハマノ不動産', 'さくら建設', 'むさし住宅', '大栄ホーム',
-               '丸和工務店', '青葉建築', '第一リフォーム', '港土木', '緑ハウス'];
-const prefs = [['東京都', '世田谷区'], ['神奈川県', '横浜市'], ['千葉県', '船橋市'], ['埼玉県', '川口市']];
+// 国税庁形式（ヘッダ無し30列）のテストデータ
+const names = ['まごころ工務店','ハマノ不動産','さくら建設','むさし住宅','大栄ホーム',
+               '丸和工務店','青葉建築','第一リフォーム','港土木','緑ハウス'];
+const prefs = [['東京都','世田谷区北沢'],['神奈川県','横浜市港北区'],['千葉県','船橋市本町'],['埼玉県','川口市栄町']];
 const rows = [];
 for (let i = 0; i < 400; i++) {
   const r = new Array(30).fill('');
   const p = prefs[i % 4];
   r[1] = String(1010001000000 + i);
   r[6] = '株式会社' + names[i % names.length] + i;
-  r[8] = '301'; r[9] = p[0]; r[10] = p[1]; r[11] = `${i}-1-1`;
+  r[8] = '301'; r[9] = p[0]; r[10] = p[1]; r[11] = `${(i%40)+1}-${(i%9)+1}`;
   r[15] = '1550031'; r[23] = '1'; r[29] = '0';
   rows.push(r.join(','));
 }
 await writeFile(join(B, 'nta_test.csv'), rows.join('\n') + '\n');
-await writeFile(join(B, 'dummy.zip'), Buffer.from('PKfake'));
+
+
+// 国税庁形式（ヘッダ無し30列）のテストデータを作る
 const browser = await chromium.launch(EXE ? { executablePath: EXE } : {});
-const page = await browser.newPage({ viewport: { width: 1440, height: 950 } });
-const errors = [];
-page.on('pageerror', e => errors.push(String(e)));
-const ok = [];
-const check = (n, c, d) => { if (!c) throw new Error(`${n} 失敗: ${d}`); ok.push(n); };
+const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const errors=[]; page.on('pageerror', e=>errors.push(String(e)));
+const ok=[]; const check=(n,c,d)=>{ if(!c) throw new Error(n+' 失敗: '+d); ok.push(n); };
+await page.goto(BASE + '/list.html'); await page.waitForTimeout(700);
+if (errors.length) throw new Error('起動時JSエラー: '+errors.join(' / '));
 
-await page.goto(BASE + '/list.html');
-await page.waitForTimeout(600);
+// 初期
+check('起動時に押せないボタンが目立たない',
+  (await page.getAttribute('#tp-dl-call','class')).includes('btn-line'),
+  await page.getAttribute('#tp-dl-call','class'));
+check('条件が最初から全部見えている',
+  await page.isVisible('#area-list') && await page.isVisible('#lb-count') && await page.isVisible('#lb-run'), '');
 
-// まずスクリプトが生きているかを見る。文法エラーを、あとの検査の
-// 分かりにくいタイムアウトとしてではなく、その場で報告させる。
-if (errors.length) throw new Error('読み込み時点でJSエラー: ' + errors.join(' / '));
-const alive = await page.evaluate(() => [typeof LB, typeof TP, typeof CX].join(','));
-check('スクリプトが最後まで読み込める', alive === 'object,object,object', alive);
+// 依頼文 → 条件（チップとチェックに反映されるか）
+await page.fill('#lb-inquiry','工務店、不動産のリスト。従業員10-20名、資本金1000万円以下、一都三県で1000件');
+await page.click('text=条件を読み取る'); await page.waitForTimeout(600);
+check('業種がチップになる', (await page.$$('#tag-list .tag')).length === 2, '');
+const checked = await page.$$eval('#area-list input:checked', a=>a.map(x=>x.value));
+check('エリアがチェックに入る', checked.length===4 && checked.includes('東京都'), JSON.stringify(checked));
+check('件数が入る', await page.inputValue('#lb-count')==='1000', await page.inputValue('#lb-count'));
+check('貼り付け欄が畳まれる', !(await page.getAttribute('#lb-inquiry','class')).includes('tall'), '');
 
-// ① 起動画面: CSVもAPIキーも要求しない
-const firstView = await page.textContent('#feed');
-check('起動画面が依頼文から始まる', /お客様からの依頼文/.test(firstView), '');
-check('起動時にAPIキーを要求しない', !/sk-ant/.test(await page.textContent('#tp-hello')), '');
-await page.waitForFunction(
-  () => !/確認しています/.test(document.getElementById('tp-seed-desc').textContent), null, { timeout: 8000 });
-check('内蔵データの状態を名乗る', /内蔵データはまだ入っていません|内蔵済み/.test(await page.textContent('#tp-seed-desc')),
-  await page.textContent('#tp-seed-desc'));
+// データを渡す → 使えない条件が「その欄」に出る
+await page.setInputFiles('#lb-file', B+'/nta_test.csv'); await page.waitForTimeout(1000);
+check('従業員数の欄が無効になる', await page.isDisabled('#lb-emp-min'), '');
+check('資本金の欄が無効になる', await page.isDisabled('#cap-sel'), '');
+check('欄のすぐ横に理由が出る', /この列がありません/.test(await page.textContent('#note-emp')),
+  await page.textContent('#note-emp'));
+check('データ元が左下に出る', /nta_test/.test(await page.textContent('#lb-file-label')),
+  await page.textContent('#lb-file-label'));
 
-// ② 読み取り: 実データのトレースが出る
-await page.fill('#lb-inquiry', '工務店、不動産のリスト作成をお願いします。従業員数10-20名、資本金1000万円以下、一都三県で1000件ほど。');
-await page.click('text=この依頼文で条件を読み取る');
-await page.waitForSelector('#lb-criteria-card:not(.hidden)', { timeout: 8000 });
-await page.waitForTimeout(500);
-const trace = await page.textContent('#tp-trace');
-check('読み取り結果を実データで実況', /一都三県|東京都/.test(trace) && /1,000件/.test(trace), trace);
-check('読み取りをAIと呼ばない', (await page.textContent('#tp-badge-parse')) === 'ルール解析',
-  await page.textContent('#tp-badge-parse'));
-check('社名キーワードがチップで見える', (await page.$$('#tp-kw-chips .kw-chip')).length >= 5, '');
-
-// ③ データが無くても「どこから探しますか」とは聞かない。探し方を自分で出す。
-await page.waitForSelector('#tp-go:not(.hidden)', { timeout: 8000 });
-check('データが無くても探し先を質問しない', !(await page.isVisible('#tp-data-msg')), '');
-const plan = await page.textContent('#tp-go-text');
-check('代わりに探し方を提案する', /AIにWebから探させる|AIがWebを検索/.test(plan), plan);
-check('無料の道も同時に示す', /無料/.test(plan + await page.textContent('#tp-go-alt')), plan);
-check('ボタンが探索を指す', /AIに探させる/.test(await page.textContent('#tp-go-label')),
-  await page.textContent('#tp-go-label'));
-
-// ④ zipが開けないときは従来どおり案内（偽zipで確認）
-await page.setInputFiles('#lb-file', B + '/dummy.zip');
-await page.waitForTimeout(400);
-const zl = await page.textContent('#lb-file-label');
-check('開けないzipは正直に案内', /zip/.test(zl) && /解凍/.test(zl), zl);
-
-// ⑤ 実データを渡すと、走る前に「効かない条件」を宣告する
-await page.setInputFiles('#lb-file', B + '/nta_test.csv');
-await page.waitForSelector('#tp-preflight-wrap:not(.hidden)', { timeout: 8000 });
-await page.waitForTimeout(300);
-const pf = await page.textContent('#tp-preflight');
-check('資本金が効かないことを走る前に言う', /資本金[\s\S]*?列がありません/.test(pf), pf);
-check('従業員数が効かないことを走る前に言う', /従業員数[\s\S]*?列がありません/.test(pf), pf);
-check('電話番号が無いことを走る前に言う', /電話番号[\s\S]*?入っていません/.test(pf), pf);
-check('✗には必ず対処ボタンがある', (await page.$$('.pf-ng .btn')).length >= 2, '');
-check('聞き返しが出る', await page.isVisible('#tp-ask'), '');
-check('データを渡したら無料の探索に切り替わる',
-  /この条件で探す/.test(await page.textContent('#tp-go-label')) &&
-  /通信も課金もありません/.test(await page.textContent('#tp-go-text')),
-  await page.textContent('#tp-go-label'));
-
-// ⑥ 聞き返しに答えると条件が実際に変わる
-await page.click('text=不明も含めて集める（おすすめ）');
-await page.waitForTimeout(400);
-check('答えがチェック状態に反映される', await page.isChecked('#lb-unknown'), '');
-
-// ⑦ 実行 → 納品ボード
-await page.click('#lb-run');
-await page.waitForSelector('#lb-result-card:not(.hidden)', { timeout: 20000 });
-await page.waitForTimeout(900);
-const title = await page.textContent('#lb-result-title');
-check('主役の数値が「架電できる社数」', /架電できる\s*0\s*\/\s*\d/.test(title.replace(/\s+/g, ' ')), title);
-check('2ペインに分割される', (await page.getAttribute('#stage', 'class')).includes('has-board'), '');
-check('架電用CSVは0件なら押せない', await page.isDisabled('#tp-dl-call'), '');
+// 探す
+await page.click('#lb-run'); await page.waitForTimeout(2500);
+check('件数が見出しに出る', /400/.test(await page.textContent('#lb-result-title')),
+  await page.textContent('#lb-result-title'));
+check('電話番号0が警告色で出る', (await page.$$('#lb-result-title .zero')).length===1, '');
+check('架電用CSVは押せない', await page.isDisabled('#tp-dl-call'), '');
 check('詳細CSVは押せる', !(await page.isDisabled('#tp-dl-detail')), '');
-const verdict = await page.textContent('#tp-verdict-body');
-check('半製品であることを自分から言う', /1件も架電できません/.test(verdict), verdict);
-const quality = await page.textContent('#lb-note');
-check('分かっていないことを列挙する', /資本金の条件は適用していません/.test(quality), quality);
-check('AI補完カードが出る', await page.isVisible('#lb-ai-card'), '');
-const quote = await page.textContent('#tp-quote-amt');
-check('押す前に金額が出る', /^≒\s*¥[\d,]+$/.test(quote.trim()), quote);
-await page.waitForTimeout(700);
-check('済んだ工程が畳まれる', await page.isVisible('#tp-compact') && !(await page.isVisible('#tp-intro')), '');
-check('畳んでも条件が一目で分かる', /工務店/.test(await page.textContent('#tp-compact-desc')),
-  await page.textContent('#tp-compact-desc'));
-const headTop = await page.evaluate(() => Math.round(document.querySelector('.board-head').getBoundingClientRect().top));
-check('リストの見出し（架電できる件数）が画面内に残る', headTop >= 0 && headTop < 200, 'top=' + headTop);
+check('電話番号が無いことを脚に出す', /電話番号は元データに含まれません/.test(await page.textContent('#lb-note')),
+  await page.textContent('#lb-note'));
+check('資本金が効かなかったことも出す', /資本金の条件は使えませんでした/.test(await page.textContent('#lb-note')), '');
 
-// ⑧ 選定理由が1社ごとに開く
-await page.click('tr.row-main');
-await page.waitForTimeout(300);
-check('行クリックで根拠が開く', (await page.$$('tr.row-why.is-open')).length === 1, '');
-const why = await page.textContent('tr.row-why.is-open');
-check('根拠が実データで書かれる', /社名に「/.test(why) && /電話番号 未取得/.test(why), why);
+// 件数を変えたら走査せず即反映
+const before = await page.$$eval('#lb-tbody tr', r=>r.length);
+await page.fill('#lb-count','50'); await page.dispatchEvent('#lb-count','change'); await page.waitForTimeout(300);
+const after = await page.$$eval('#lb-tbody tr', r=>r.length);
+check('件数変更は走査せず即反映', before===300 && after===50, before+'→'+after);
+check('その間ずっと結果が見えている', !(await page.isVisible('#lb-progress-card')), '');
 
-// ⑧-2 全行おなじ値しか入らない列は畳む（同じ文字が並ぶだけの列は情報ではない）
-const cols = await page.evaluate(() => {
-  const t = document.getElementById('lb-table');
-  const vis = [...t.querySelectorAll('thead th')].filter(th => getComputedStyle(th).display !== 'none')
-    .map(th => th.textContent.trim());
-  return { cls: t.className, vis };
-});
-check('中身の無い列を畳む', cols.cls.includes('no-size') && cols.cls.includes('no-why'),
-  JSON.stringify(cols));
-check('意味のある列だけ残る',
-  cols.vis.join('/') === '会社名/所在地/電話番号', JSON.stringify(cols.vis));
+// この時点ではAIを1回も使っていない。その状態の「作り方」を確かめる。
+await page.evaluate(() => UI.info('recipe')); await page.waitForTimeout(300);
+check('AI未使用なら0円と書く', /使っていません（0円）/.test(await page.textContent('#info-body')),
+  await page.textContent('#info-body'));
+check('読み取りをAIと呼ばない', /AIではありません/.test(await page.textContent('#info-body')), '');
+await page.evaluate(() => UI.close('dlg-info')); await page.waitForTimeout(200);
 
-// ⑨ 「このリストの作り方」
-await page.click('#tp-recipe summary');
-await page.waitForTimeout(200);
-const recipe = await page.textContent('#tp-recipe-body');
-check('AIを使っていないことを明記', /AIを使った箇所：ありません/.test(recipe), recipe);
-check('走査行数が実測で入る', /400行を読み/.test(recipe), recipe);
-
-// ⑨-2 該当0件のときは、専用の案内を初回から出す（無言の空表にしない）
-await page.click('text=条件を変える');
-await page.waitForTimeout(400);
-// 社名キーワードの生入力は「詳細設定」の中にあるので開いてから触る
-await page.evaluate(() => { document.querySelector('#lb-criteria-card details.adv').open = true; });
-await page.fill('#lb-keywords', '絶対に一致しない社名キーワード');
-await page.fill('#lb-industries', '');
-await page.click('#lb-run');
-await page.waitForSelector('#lb-result-card:not(.hidden)', { timeout: 20000 });
-await page.waitForTimeout(600);
-check('0件のときは専用の案内が出る', await page.isVisible('#lb-empty'), '');
-check('0件なら詳細CSVも押せない', await page.isDisabled('#tp-dl-detail'), '');
-await page.evaluate(() => LB.download('call'));
-await page.waitForTimeout(300);
-check('電話番号0件の架電用CSVは理由つきで止める',
-  /先にリストを作成してください|電話番号がまだ1件もありません/.test(await page.textContent('#toasts')),
-  await page.textContent('#toasts'));
-// 0件のときは工程を畳まない（条件を直す画面を出したままにする）
-check('0件のときは条件カードを開いたままにする', await page.isVisible('#lb-criteria-card'), '');
-await page.fill('#lb-industries', '工務店, 不動産');
-await page.fill('#lb-keywords', '');
-
-// ⑩ 見本モード: 印が付き、ダウンロードが封鎖される
-await page.evaluate(() => TP.expand(true));   // 「依頼文から やり直す」と同じ
-await page.waitForTimeout(600);
-check('畳んだ工程を開き直せる', await page.isVisible('#tp-intro'), '');
-await page.click('text=同梱サンプル（架空の12社）で動作だけ見る');
-await page.waitForTimeout(700);
-await page.click('#lb-run');
-await page.waitForSelector('#tp-sample-band:not(.hidden)', { timeout: 15000 });
-await page.waitForTimeout(600);
-check('見本には常時の警告帯が出る', await page.isVisible('#tp-sample-band'), '');
-check('見本は詳細CSVも落とせない', await page.isDisabled('#tp-dl-detail'), '');
-check('見本は架電用CSVも落とせない', await page.isDisabled('#tp-dl-call'), '');
-check('見本の行に印が付く', (await page.$$('.why.is-sample')).length > 0, '');
-await page.evaluate(() => LB.download('detail'));
-await page.waitForTimeout(300);
-check('見本のダウンロードを試みたら理由を出す',
-  /見本はダウンロードできません/.test(await page.textContent('#toasts')), await page.textContent('#toasts'));
+// 見本モード
+await page.click('#lb-count'); await page.fill('#lb-count','1000');
+await page.evaluate(()=>LB.useSample()); await page.waitForTimeout(2500);
+check('見本の帯が出る', await page.isVisible('#tp-sample-band'), '');
+check('見本は両方落とせない',
+  (await page.isDisabled('#tp-dl-detail')) && (await page.isDisabled('#tp-dl-call')), '');
+check('見本の行に印が付く', (await page.$$('.src-dot.sample')).length>0, '');
+await page.evaluate(()=>LB.download('detail')); await page.waitForTimeout(300);
+check('見本DLは理由つきで止まる', /見本はダウンロードできません/.test(await page.textContent('#toasts')), '');
 
 // ⑩-2 AIによる探索: Anthropicの応答を差し替えて、判定と組み立てだけを確かめる
-await page.evaluate(() => TP.expand(true));
-await page.waitForTimeout(400);
 const discovery = await page.evaluate(async () => {
   // 実際のAPIは叩かず、応答だけ差し替える（課金しないでロジックを試す）
   const real = window.fetch;
@@ -275,6 +184,7 @@ const discovery = await page.evaluate(async () => {
 
   document.getElementById('lb-ai-key').value = 'sk-ant-test-not-a-real-key';
   document.getElementById('lb-industries').value = '飲食店';
+  document.getElementById('lb-prefectures').value = '大阪府';
   document.getElementById('lb-keywords').value = '';
   document.getElementById('lb-prefectures').value = '大阪府';
   document.getElementById('lb-count').value = '50';
@@ -299,11 +209,14 @@ check('探索由来だと分かる印を付ける',
   discovery.reasons.length === 1 && /探索/.test(discovery.reasons[0]), JSON.stringify(discovery.reasons));
 await page.waitForTimeout(600);
 check('探索結果にも納品ボードが出る', await page.isVisible('#lb-result-card'), '');
-check('探索は自動判定だと結果に明記', /AIがWebを検索して見つけた会社/.test(await page.textContent('#lb-note')),
+check('探索は自動判定だと結果に明記', /自動判定・未検証/.test(await page.textContent('#lb-note')),
   await page.textContent('#lb-note'));
-const dRecipe = await page.textContent('#tp-recipe-body');
-check('作り方に「手元の名簿は使っていない」と書く', /手元の名簿は使っていません/.test(dRecipe), dRecipe);
-check('探索行のチップが「AIが探索」', (await page.$$('.why.is-ai')).length > 0, '');
+await page.evaluate(() => UI.info('recipe'));
+await page.waitForTimeout(300);
+const dRecipe = await page.textContent('#info-body');
+check('作り方の出所がAIのWeb検索になる', /AIによるWeb検索/.test(dRecipe), dRecipe);
+await page.evaluate(() => UI.close('dlg-info'));
+check('探索行に印が付く', (await page.$$('.src-dot.ai')).length > 0, '');
 
 // ⑩-3 辞書に無い業種（飲食店）でも、依頼文をAIに渡して探せる
 const unlisted = await page.evaluate(async () => {
@@ -325,32 +238,22 @@ const unlisted = await page.evaluate(async () => {
   return {
     industriesEmpty: c.industries.length === 0 && c.name_keywords.length === 0,
     promptHasInquiry: /美容室/.test(sent ? sent.messages[0].content : ''),
-    planLabel: document.getElementById('tp-go-label').textContent
+    planLabel: '—'
   };
 });
 check('辞書に無い業種は条件が空になる（前提の確認）', unlisted.industriesEmpty, JSON.stringify(unlisted));
 check('それでも依頼文をAIに渡して探せる', unlisted.promptHasInquiry, JSON.stringify(unlisted));
-check('その場合ボタンもAI探索を指す', /AIに探させる/.test(unlisted.planLabel), unlisted.planLabel);
 
-// ⑪ 料金シート
-await page.click('#tp-cost-chip');
-await page.waitForTimeout(400);
-const sheet = await page.textContent('#tp-sheet-body');
-check('無料と有料の境界が画面内で分かる', /無料/.test(sheet) && /従量/.test(sheet) && /python main\.py/.test(sheet), '');
-await page.click('[data-tab="source"]');
-await page.waitForTimeout(300);
-check('AIでない処理をAIと呼ばない説明がある',
-  /AIではありません/.test(await page.textContent('#tp-sheet-body')), '');
 
-// ⑫ ダークテーマ
-await page.keyboard.press('Escape');
-await page.waitForTimeout(200);
-await page.click('#theme-toggle');
-await page.waitForTimeout(500);
-check('ダークテーマに切り替わる', (await page.getAttribute('html', 'data-theme')) === 'dark', '');
 
-if (errors.length) throw new Error('page errors: ' + errors.join(' / '));
-ok.forEach(n => console.log('OK ' + n));
-console.log(`\nALL ${ok.length} FLOW CHECKS PASSED`);
+// 料金と作り方
+await page.click('text=料金'); await page.waitForTimeout(400);
+const info = await page.textContent('#info-body');
+check('無料と有料の境目が書いてある', /無料の範囲/.test(info) && /有料の範囲/.test(info) && /python main\.py/.test(info), '');
+await page.evaluate(() => UI.close('dlg-info'));
+
+if (errors.length) throw new Error('page errors: '+errors.join(' / '));
+ok.forEach(n=>console.log('OK '+n));
+console.log('\nALL '+ok.length+' CHECKS PASSED');
 await browser.close();
 server.close();
