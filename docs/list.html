@@ -180,6 +180,9 @@
     }
     .grp-note b { font-weight: 700; }
 
+    @keyframes flash { 0%, 100% { background: transparent; } 30% { background: var(--accent-tint); } }
+    .flash { animation: flash 1.1s var(--ease); }
+
     /* キーが入っているかどうかを、ひと目で分かるようにする */
     .saved-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
     .saved-row b { font-family: var(--mono); font-size: 11.5px; font-weight: 500; color: var(--text-3); }
@@ -366,14 +369,31 @@
     .blank h2 { font-size: 15px; font-weight: 700; }
     .blank p { font-size: 12.5px; color: var(--text-2); max-width: 30em; }
 
-    /* 走っているとき */
-    .running { padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--sunk); }
-    .running-bar { height: 2px; background: var(--line); overflow: hidden; position: relative; }
-    .running-bar::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 30%;
-                          background: var(--accent); animation: sweep 1.5s var(--ease) infinite; }
-    @keyframes sweep { 0% { left: -30%; } 100% { left: 100%; } }
-    .running-t { font-size: 12.5px; margin-top: 10px; font-variant-numeric: tabular-nums; }
-    .running-s { font-size: 11px; color: var(--text-3); margin-top: 3px; }
+    /* 走っているとき。動いていることが目に入る大きさで出す。 */
+    .running { padding: 13px 16px 0; border-bottom: 1px solid var(--line); background: var(--surface); }
+    .running-head { display: flex; align-items: center; gap: 12px; padding-bottom: 11px; }
+    .running-t { font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
+    .running-sp { flex: 1; }
+    .running-sub { font-size: 11.5px; color: var(--text-3); }
+    .running-bar { height: 3px; background: var(--line); overflow: hidden; position: relative; }
+    .running-bar i { display: block; height: 100%; width: 0; background: var(--accent);
+                     transition: width .45s var(--ease); }
+    .running-bar.indet i { width: 32%; position: absolute; inset: 0 auto 0 0;
+                           animation: sweep 1.25s var(--ease) infinite; transition: none; }
+    @keyframes sweep { 0% { left: -32%; } 100% { left: 100%; } }
+
+    /* 呼吸する3点。数字が止まって見える瞬間でも、動いていることが分かる。 */
+    .pulse { display: inline-flex; gap: 4px; flex-shrink: 0; }
+    .pulse i { width: 6px; height: 6px; border-radius: 99px; background: var(--accent); display: block;
+               animation: breathe 1.1s var(--ease) infinite; }
+    .pulse i:nth-child(2) { animation-delay: .18s; }
+    .pulse i:nth-child(3) { animation-delay: .36s; }
+    @keyframes breathe { 0%, 100% { opacity: .25; transform: scale(.8); }
+                         40% { opacity: 1; transform: scale(1); } }
+
+    /* 見つかった行が入ってきたことを、その行自身で示す */
+    @keyframes rowIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+    tbody tr.fresh { animation: rowIn .34s var(--ease) both; }
 
     /* 帯（見本・注意） */
     .band { display: flex; align-items: center; gap: 10px; padding: 9px 16px; font-size: 12px;
@@ -627,8 +647,14 @@
       </div>
 
       <div class="running hidden" id="lb-progress-card">
-        <div class="running-bar"></div>
-        <p class="running-t" id="lb-progress-text">0行を確認</p>
+        <div class="running-head">
+          <span class="pulse" aria-hidden="true"><i></i><i></i><i></i></span>
+          <b class="running-t nums" id="lb-progress-text">0行を確認</b>
+          <span class="running-sp"></span>
+          <span class="running-sub nums" id="lb-progress-sub"></span>
+          <button class="btn btn-flat btn-sm hidden" id="lb-run-stop" onclick="LB.aiStop()">止める</button>
+        </div>
+        <div class="running-bar"><i id="running-fill"></i></div>
       </div>
 
       <div class="results" id="lb-table-wrap">
@@ -1593,6 +1619,9 @@ var LB = {
 
   /* 探す。どこから探すかは聞かない。使えるものを自分で選ぶ。 */
   run: async function () {
+    // 足りないものがある状態でボタンが押されたら、断らずにそこへ連れて行く
+    if (UI._need === 'key') { UI.tab('cond'); UI.editKey(); UI.flash('grp-key'); return; }
+    if (UI._need === 'data') { UI.openData(); return; }
     var criteria = this.collectCriteria();
     var inquiry = (document.getElementById('lb-inquiry').value || '').trim();
     if (!criteria.name_keywords.length && !criteria.industries.length && !inquiry) {
@@ -1618,11 +1647,11 @@ var LB = {
       strictCapital: document.getElementById('lb-strict-cap').checked,
       cap: cap,
       onProgress: function (scanned, found, label) {
-        document.getElementById('lb-progress-text').textContent =
-          (label || '') + scanned.toLocaleString() + '行を確認 / 該当 ' + found.toLocaleString() + '社';
+        UI.progress(found.toLocaleString() + '社 見つかりました',
+                    found, (label || '') + scanned.toLocaleString() + '行を確認');
       }
     };
-    UI.running(true);
+    UI.running(true, { text: '名簿を読んでいます' });
     document.getElementById('lb-run').disabled = true;
     UI.tab('list');
     try {
@@ -1683,7 +1712,7 @@ var LB = {
     if (!criteria.name_keywords.length && !criteria.industries.length && !inquiry) {
       toast('業種を入れてください', 'error'); return;
     }
-    var apiKey = (document.getElementById('lb-ai-key').value || '').trim();
+    var apiKey = UI.apiKey();
     if (!apiKey) {
       toast('WebからはAIが探すので、Anthropic APIキーが要ります', 'error');
       UI.tab('cond');
@@ -1701,8 +1730,8 @@ var LB = {
 
     this._sampleRun = false; this._aiAbort = false; this._aiModel = model;
     this.companies = []; this._pool = [];
-    UI.aiRunning(true); UI.running(true); UI.tab('list');
-    document.getElementById('lb-progress-text').textContent = 'AIがWebを検索しています…';
+    UI.aiRunning(true); UI.tab('list');
+    UI.running(true, { text: 'Webを検索しています', total: target, stoppable: true });
 
     try {
       while (!this._aiAbort && this.companies.length < target && dry < 2 && round < 60) {
@@ -1732,8 +1761,15 @@ var LB = {
         dry = fresh ? 0 : dry + 1;
         this._aiCostYen = aiCostYen(model, this._aiIn, this._aiOut, this._aiSearches);
         UI.spend(this._aiCostYen);
-        document.getElementById('lb-progress-text').textContent =
-          'Webを検索 ' + this.companies.length + ' / ' + target + '社';
+        // 見つかった分をその場で表に流し込む。動いていることの一番強い証拠になる。
+        this._pool = this.companies.slice();
+        this._lastCriteria = criteria;
+        this._lastOut = { scanned: 0, total: this.companies.length, truncated: false,
+                          dataHasCapital: false, unmatchedFiles: [], discovered: true, running: true };
+        UI.render(fresh);
+        UI.progress(this.companies.length.toLocaleString() + ' / ' + target.toLocaleString() + '社',
+                    this.companies.length,
+                    'Web検索 ' + this._aiSearches + '回 ・ ¥' + Math.round(this._aiCostYen).toLocaleString());
       }
     } catch (e) {
       toast('探索に失敗しました: ' + e.message, 'error');
@@ -1754,9 +1790,8 @@ var LB = {
   aiEnrich: async function () {
     if (!this.companies.length) { toast('先にリストを作ってください', 'error'); return; }
     if (this._sampleRun) { toast('見本データでは調べません（実在しない会社のため）', 'error'); return; }
-    var keyEl = document.getElementById('lb-ai-key');
-    var apiKey = keyEl.value.trim();
-    if (!apiKey) { toast('Anthropic APIキーを入れてください', 'error'); keyEl.focus(); return; }
+    var apiKey = UI.apiKey();
+    if (!apiKey) { toast('Anthropic APIキーを入れてください', 'error'); UI.editKey(); return; }
     if (apiKey.indexOf('sk-ant-') !== 0) { toast('キーの形式が違うようです（sk-ant-で始まります）', 'error'); return; }
     localStorage.setItem('telepy_anthropic_key', apiKey);
 
@@ -1769,6 +1804,7 @@ var LB = {
 
     this._aiAbort = false; this._aiModel = model;
     UI.aiRunning(true);
+    UI.running(true, { text: '電話番号を調べています', total: targets.length, stoppable: true });
     var self = this, done = 0, got = 0, failed = 0, budgetHit = false;
     var prog = document.getElementById('lb-ai-progress');
     prog.classList.remove('hidden');
@@ -1778,6 +1814,8 @@ var LB = {
       self._aiCostYen = cost;
       prog.textContent = (budgetHit ? '上限に達したので止めました。' : '調べています… ') +
         done + ' / ' + targets.length + '社（取得 ' + got + '・特定できず ' + failed + '）';
+      UI.progress(got.toLocaleString() + '件 取得', done,
+                  done + ' / ' + targets.length + '社 ・ ¥' + Math.round(cost).toLocaleString());
       UI.cost(cost, budget ? aiCostYen(model, budget * .9, budget * .1, 0) : 0);
       UI.spend(cost);
     }
@@ -1846,6 +1884,7 @@ var LB = {
     await Promise.all([worker(), worker()]);
 
     UI.aiRunning(false);
+    UI.running(false);
     var miss = done - got;
     prog.textContent = (budgetHit ? '上限に達したので止めました。' : this._aiAbort ? '止めました。' : '終わりました。') +
       ' ' + done + '社のうち ' + got + '社に電話番号が入りました（実費 ¥' + this._aiCostYen.toLocaleString() + '）。' +
@@ -2009,8 +2048,21 @@ var UI = {
     if (v.indexOf('sk-ant-') === 0 && v.length >= 30) {
       try { localStorage.setItem('telepy_anthropic_key', v); } catch (e) {}
       this.keyState();
+      toast('APIキーを保存しました');
     }
     this.runButton();
+  },
+  flash: function (id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+  },
+  /* いま使えるキー。欄を畳んでいるときは端末の保存から取る。 */
+  apiKey: function () {
+    var v = (document.getElementById('lb-ai-key').value || '').trim();
+    if (v) return v;
+    try { return (localStorage.getItem('telepy_anthropic_key') || '').trim(); } catch (e) { return ''; }
   },
   keyState: function () {
     var v = '';
@@ -2039,13 +2091,31 @@ var UI = {
   runButton: function () {
     var btn = document.getElementById('lb-run'), note = document.getElementById('run-note');
     var n = parseInt(document.getElementById('lb-count').value, 10) || 100;
+    var hasKey = !!this.apiKey();
+    btn.classList.remove('btn-dark'); btn.classList.add('btn-go');
+    this._need = '';
     if (this._method === 'web') {
+      if (!hasKey) {
+        // 押してから「キーが要ります」と断るのは行き止まり。押す前に書く。
+        this._need = 'key';
+        btn.textContent = 'APIキーを入れて始める';
+        btn.classList.remove('btn-go'); btn.classList.add('btn-dark');
+        note.textContent = 'Webから探すにはAnthropicのキーが要ります（無料で試すなら下の見本）';
+        return;
+      }
       var model = document.getElementById('lb-ai-model').value;
       var per = aiCostYen(model, 6000, 900, 3) / 8;
-      var est = Math.round(per * n);
       btn.textContent = 'Webから探す';
-      note.textContent = n.toLocaleString() + '件ぶん 概算 ≒ ¥' + est.toLocaleString() + '・上限で自動停止';
+      note.textContent = n.toLocaleString() + '件ぶん 概算 ≒ ¥' + Math.round(per * n).toLocaleString() + '・上限で自動停止';
     } else {
+      var hasData = !!(LB._files && LB._files.length) || !!CX.seed;
+      if (!hasData) {
+        this._need = 'data';
+        btn.textContent = '名簿を選ぶ';
+        btn.classList.remove('btn-go'); btn.classList.add('btn-dark');
+        note.textContent = 'CSV / zip を渡すと、この端末の中だけで無料で探せます';
+        return;
+      }
       btn.textContent = 'この名簿から探す';
       note.textContent = '無料・通信なし';
     }
@@ -2168,6 +2238,7 @@ var UI = {
     LB._shape = await CX.inspect(files[0]);
     this.sourceLine(label);
     this.limits();
+    this.runButton();
     this.receipt(files.length + 'ファイル・' +
       (LB._shape.encoding === 'shift_jis' ? 'Shift_JIS' : 'UTF-8') + 'と判定・' +
       (LB._shape.nta ? '国税庁の法人番号データ形式' : LB._shape.recognized ? '列を認識しました' : '列を認識できません'));
@@ -2216,11 +2287,28 @@ var UI = {
   close: function (id) { var d = document.getElementById(id); if (d.open) d.close(); },
 
   /* ---- 実行中の見せ方 ---- */
-  running: function (on) {
-    document.getElementById('lb-progress-card').classList.toggle('hidden', !on);
+  /* on=true で進行表示。total を渡すと進み具合のバー、渡さなければ往復するバー。 */
+  running: function (on, opts) {
+    opts = opts || {};
+    var card = document.getElementById('lb-progress-card');
+    card.classList.toggle('hidden', !on);
+    document.getElementById('lb-run-stop').classList.toggle('hidden', !on || !opts.stoppable);
+    document.getElementById('lb-progress-sub').textContent = '';
+    var bar = card.querySelector('.running-bar');
+    bar.classList.toggle('indet', !opts.total);
+    document.getElementById('running-fill').style.width = '0%';
     if (on) {
       document.getElementById('lb-empty').classList.add('hidden');
-      document.getElementById('lb-progress-text').textContent = '0行を確認';
+      document.getElementById('lb-progress-text').textContent = opts.text || '準備中';
+      this._runTotal = opts.total || 0;
+    }
+  },
+  progress: function (text, done, sub) {
+    document.getElementById('lb-progress-text').textContent = text;
+    if (sub != null) document.getElementById('lb-progress-sub').textContent = sub;
+    if (this._runTotal) {
+      document.getElementById('running-fill').style.width =
+        Math.min(100, Math.round(done / this._runTotal * 100)) + '%';
     }
   },
   aiRunning: function (on) {
@@ -2253,7 +2341,7 @@ var UI = {
   },
 
   /* ---- 結果 ---- */
-  render: function () {
+  render: function (freshCount) {
     var n = LB.companies.length, out = LB._lastOut || {}, criteria = LB._lastCriteria || {};
     var withPhone = LB.companies.filter(function (c) { return c.phone_number; }).length;
     var sample = LB._sampleRun;
@@ -2296,7 +2384,8 @@ var UI = {
       var size = [];
       if (c.capital_stock != null) size.push('¥' + Number(c.capital_stock).toLocaleString());
       if (c.employee_number != null) size.push(c.employee_number + '名');
-      return '<tr class="row">' +
+      var isFresh = freshCount && i >= rows.length - freshCount;
+      return '<tr class="row' + (isFresh ? ' fresh' : '') + '">' +
         '<td class="c-no">' + (i + 1) + '</td>' +
         '<td class="c-name">' + (kind ? '<span class="src-dot ' + kind + '"></span>' : '') + esc(c.name || '') + '</td>' +
         '<td class="c-addr" title="' + esc(c.location || '') + '">' + esc(c.location || c.prefecture || '') + '</td>' +

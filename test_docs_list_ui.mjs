@@ -85,10 +85,25 @@ check('起動時に押せないボタンが目立たない',
   await page.getAttribute('#tp-dl-call','class'));
 check('条件が最初から全部見えている',
   await page.isVisible('#area-list') && await page.isVisible('#lb-count') && await page.isVisible('#lb-run'), '');
-check('名簿を持っていなくても探せる状態で始まる',
+// キーが無い状態では、押してから断らずに、押す前に何が要るかを書く
+check('キーが無いとき、ボタンが要件を先に言う',
+  /APIキーを入れて始める/.test(await page.textContent('#lb-run')), await page.textContent('#lb-run'));
+check('無料で試す道も併記する', /見本/.test(await page.textContent('#run-note')),
+  await page.textContent('#run-note'));
+// 押しても行き止まりにせず、キー欄へ連れて行く
+await page.click('#lb-run'); await page.waitForTimeout(400);
+check('押すとキー欄が開く', await page.isVisible('#key-edit'), '');
+check('行き止まりのトーストを出さない',
+  !/要ります/.test(await page.textContent('#toasts')), await page.textContent('#toasts'));
+// キーを入れると、そのまま探せる姿に変わる
+await page.fill('#lb-ai-key', 'sk-ant-api03-' + 'y'.repeat(30));
+await page.waitForTimeout(300);
+check('キーを入れると探せる姿になる',
   /Webから探す/.test(await page.textContent('#lb-run')), await page.textContent('#lb-run'));
 check('押す前に金額が出る', /≒ ¥[\d,]+/.test(await page.textContent('#run-note')),
   await page.textContent('#run-note'));
+await page.evaluate(() => UI.clearKey());
+await page.waitForTimeout(200);
 check('名簿は要らないと明記', /名簿不要/.test(await page.textContent('#method-hint')),
   await page.textContent('#method-hint'));
 check('データ元の行は出さない', !(await page.isVisible('#src-row')), '');
@@ -317,6 +332,7 @@ const webRun = await page.evaluate(async () => {
   window.fetch = async (url, opt) => {
     if (String(url).indexOf('api.anthropic.com') === -1) return real(url, opt);
     calls++; sentBody = JSON.parse(opt.body);
+    await new Promise(r => setTimeout(r, 140));   // 通信待ちを模す
     const list = calls > 2 ? [] : [1, 2, 3].map(k => ({
       name: '株式会社サンプル工務店' + (calls * 10 + k),
       location: '東京都港区' + k, prefecture: '東京都',
@@ -336,16 +352,32 @@ const webRun = await page.evaluate(async () => {
   document.getElementById('lb-emp-min').value = '10';
   document.getElementById('lb-emp-max').value = '20';
   UI.syncFromInputs();
-  await LB.run();                       // ← 左下の主ボタンと同じ経路
+  const running = LB.run();             // ← 左下の主ボタンと同じ経路
+  // 走っている最中の画面を1度だけ覗く
+  await new Promise(r => setTimeout(r, 200));
+  const mid = {
+    shown: !document.getElementById('lb-progress-card').classList.contains('hidden'),
+    text: document.getElementById('lb-progress-text').textContent,
+    rows: document.querySelectorAll('#lb-tbody tr').length,
+    stoppable: !document.getElementById('lb-run-stop').classList.contains('hidden')
+  };
+  await running;
+  const endShown = !document.getElementById('lb-progress-card').classList.contains('hidden');
   window.fetch = real;
   return { n: LB.companies.length, withTel: LB.companies.filter(c => c.phone_number).length,
            calls, cost: LB._aiCostYen,
-           sizeSent: /従業員数 10〜20名/.test(sentBody ? sentBody.messages[0].content : '') };
+           sizeSent: /従業員数 10〜20名/.test(sentBody ? sentBody.messages[0].content : ''),
+           mid: mid, endShown: endShown };
 });
 check('名簿なしでWebから探せる', webRun.n === 6, JSON.stringify(webRun));
 check('探した会社に電話番号が入っている', webRun.withTel === 6, JSON.stringify(webRun));
 check('実費が実測で出る', webRun.cost > 0, JSON.stringify(webRun));
 check('規模の希望がAIに伝わっている', webRun.sizeSent, JSON.stringify(webRun));
+check('探索中は進み具合が画面に出る',
+  webRun.mid.shown && webRun.mid.rows > 0 && /\d+ \/ \d+社/.test(webRun.mid.text),
+  JSON.stringify(webRun.mid));
+check('探索中は途中で止められる', webRun.mid.stoppable, JSON.stringify(webRun.mid));
+check('探索が終わると進行表示は消える', !webRun.endShown, JSON.stringify(webRun));
 check('AIを使ったら計器が動く',
   !/AI\s*0\s*回/.test((await page.textContent('#tp-meter')).replace(/\s+/g,' ')),
   await page.textContent('#tp-meter'));
