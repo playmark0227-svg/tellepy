@@ -386,6 +386,64 @@ check('架電用CSVがそのまま使える', !(await page.isDisabled('#tp-dl-ca
 check('結果の見出しに電話番号の数が出る', /6/.test(await page.textContent('#lb-result-title')),
   await page.textContent('#lb-result-title'));
 
+// ⑩-4 Web検索つきの呼び出しは途中で pause_turn を返す。そこで打ち切らないこと。
+//     打ち切ると「課金されたのに0件」になり、利用者からは動かないように見える。
+const paused = await page.evaluate(async () => {
+  const real = window.fetch; let turns = 0; const lens = [];
+  window.fetch = async (url, opt) => {
+    if (String(url).indexOf('api.anthropic.com') === -1) return real(url, opt);
+    turns++; lens.push(JSON.parse(opt.body).messages.length);
+    if (turns === 1) return { ok: true, json: async () => ({
+      stop_reason: 'pause_turn',
+      content: [{ type: 'text', text: '検索しています…' }],
+      usage: { input_tokens: 100, output_tokens: 20, server_tool_use: { web_search_requests: 2 } } }) };
+    return { ok: true, json: async () => ({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: JSON.stringify({ companies: [{
+        name: '株式会社テスト工務店', location: '東京都港区1-1', prefecture: '東京都',
+        phone_number: '03-1111-2222', company_url: 'https://t.example.jp',
+        source_url: 'https://t.example.jp/company' }] }) }],
+      usage: { input_tokens: 200, output_tokens: 80, server_tool_use: { web_search_requests: 1 } } }) };
+  };
+  const out = await aiDiscoverCompanies('sk-ant-test',
+    { prefectures: ['東京都'], industries: ['工務店'], name_keywords: ['工務店'],
+      employee_min: null, employee_max: null, capital_max: null, target_count: 10 },
+    'claude-haiku-4-5', [], 5, '');
+  window.fetch = real;
+  return { turns, lens, got: out.companies.length, searches: out.usage.searches };
+});
+check('pause_turn なら続きを取りに行く', paused.turns === 2 && paused.lens[1] === 2,
+  JSON.stringify(paused));
+check('中断した回の結果を捨てない', paused.got === 1, JSON.stringify(paused));
+check('中断した回の使用量も足し込む', paused.searches === 3, JSON.stringify(paused));
+
+// ⑩-5 0件で終わったときは、黙って終わらず理由を画面に残す
+const failed = await page.evaluate(async () => {
+  const real = window.fetch;
+  window.fetch = async (url, opt) => {
+    if (String(url).indexOf('api.anthropic.com') === -1) return real(url, opt);
+    return { ok: true, json: async () => ({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: 'すみません、うまく探せませんでした。' }],   // JSONを返さない
+      usage: { input_tokens: 100, output_tokens: 20, server_tool_use: { web_search_requests: 1 } } }) };
+  };
+  document.getElementById('lb-ai-key').value = 'sk-ant-api03-' + 'z'.repeat(30);
+  document.getElementById('lb-industries').value = '工務店';
+  document.getElementById('lb-prefectures').value = '東京都';
+  document.getElementById('lb-count').value = '10';
+  UI.syncFromInputs();
+  await LB.run();
+  window.fetch = real;
+  return { shown: !document.getElementById('lb-empty').classList.contains('hidden'),
+           title: document.getElementById('blank-t').textContent,
+           msg: document.getElementById('blank-p').textContent,
+           btn: document.getElementById('blank-btn').textContent };
+});
+check('0件でも黙って終わらない', failed.shown && /作れませんでした/.test(failed.title),
+  JSON.stringify(failed));
+check('何が起きたかを画面に残す', /取り出せませんでした/.test(failed.msg), failed.msg);
+check('応答の中身を確認できる', /応答の中身/.test(failed.btn), failed.btn);
+
 // 料金と作り方
 await page.click('text=料金'); await page.waitForTimeout(400);
 const info = await page.textContent('#info-body');
