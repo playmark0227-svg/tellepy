@@ -180,6 +180,12 @@
     }
     .grp-note b { font-weight: 700; }
 
+    /* キーが入っているかどうかを、ひと目で分かるようにする */
+    .saved-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
+    .saved-row b { font-family: var(--mono); font-size: 11.5px; font-weight: 500; color: var(--text-3); }
+    .saved-mark { color: var(--ok); font-weight: 700; }
+    .saved-row .btn { margin-left: auto; }
+
     /* よく使う条件 */
     .presets { display: grid; gap: 5px; }
     .preset {
@@ -561,10 +567,17 @@
         </div>
 
         <div class="grp hidden" id="grp-key">
-          <div class="grp-t"><span>Anthropic APIキー</span></div>
-          <input type="password" id="lb-ai-key" placeholder="sk-ant-api03-..." oninput="UI.keyChanged()">
-          <p class="hint">この端末にだけ保存され、あなたのキーで直接 Anthropic に問い合わせます。
-            <a href="https://platform.claude.com/" target="_blank" rel="noopener">発行はこちら</a></p>
+          <div class="grp-t"><span>Anthropic APIキー</span>
+            <button class="hidden" id="key-clear" onclick="UI.clearKey()">消す</button></div>
+          <div id="key-saved" class="hidden saved-row">
+            <span class="saved-mark">✓</span><b id="key-tail"></b>
+            <button class="btn btn-flat btn-sm" onclick="UI.editKey()">変更</button>
+          </div>
+          <div id="key-edit">
+            <input type="password" id="lb-ai-key" placeholder="sk-ant-api03-..." oninput="UI.keyChanged()">
+            <p class="hint">この端末にだけ保存・telepyのサーバーには送りません
+              <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener">キーを発行</a></p>
+          </div>
         </div>
 
         <div class="grp hidden" id="grp-ai">
@@ -1674,8 +1687,7 @@ var LB = {
     if (!apiKey) {
       toast('WebからはAIが探すので、Anthropic APIキーが要ります', 'error');
       UI.tab('cond');
-      document.getElementById('grp-key').classList.remove('hidden');
-      document.getElementById('lb-ai-key').focus();
+      UI.editKey();
       return;
     }
     if (apiKey.indexOf('sk-ant-') !== 0) { toast('キーの形式が違うようです（sk-ant-で始まります）', 'error'); return; }
@@ -1865,6 +1877,7 @@ var UI = {
       var k = localStorage.getItem('telepy_anthropic_key');
       if (k) document.getElementById('lb-ai-key').value = k;
     } catch (e) {}
+    this.keyState();
     var ta = document.getElementById('lb-inquiry');
     ta.addEventListener('focus', function () { this.classList.add('tall'); });
     ta.addEventListener('blur', function () { if (!this.value.trim()) this.classList.remove('tall'); });
@@ -1903,9 +1916,8 @@ var UI = {
     document.getElementById('src-row').classList.toggle('hidden', web);
     document.getElementById('grp-ai').classList.toggle('hidden', !web);
     document.getElementById('grp-detail').classList.toggle('hidden', web);
-    var hasKey = false;
-    try { hasKey = !!(document.getElementById('lb-ai-key').value || localStorage.getItem('telepy_anthropic_key')); } catch (e) {}
-    document.getElementById('grp-key').classList.toggle('hidden', !web || hasKey);
+    document.getElementById('grp-key').classList.toggle('hidden', !web);
+    this.keyState();
     if (web) {
       // 規模はAIへの注文として伝えられる。ただし裏取りはできないので、
       // 「絞り込み」ではなく「希望として伝える」と正直に書く。
@@ -1990,10 +2002,37 @@ var UI = {
       '<span class="' + (LB._aiCostYen ? 'hot' : '') + '">今日 <b>¥' + Math.round(LB._aiCostYen || 0).toLocaleString() + '</b></span>';
   },
 
+  /* キーの状態。打ちかけの文字列を保存すると、次に開いたとき壊れた値で失敗する。
+     形になったものだけ残す。 */
   keyChanged: function () {
-    try { var v = document.getElementById('lb-ai-key').value.trim();
-          if (v) localStorage.setItem('telepy_anthropic_key', v); } catch (e) {}
+    var v = document.getElementById('lb-ai-key').value.trim();
+    if (v.indexOf('sk-ant-') === 0 && v.length >= 30) {
+      try { localStorage.setItem('telepy_anthropic_key', v); } catch (e) {}
+      this.keyState();
+    }
     this.runButton();
+  },
+  keyState: function () {
+    var v = '';
+    try { v = localStorage.getItem('telepy_anthropic_key') || ''; } catch (e) {}
+    var saved = !!v;
+    document.getElementById('key-saved').classList.toggle('hidden', !saved);
+    document.getElementById('key-edit').classList.toggle('hidden', saved);
+    document.getElementById('key-clear').classList.toggle('hidden', !saved);
+    if (saved) document.getElementById('key-tail').textContent = 'sk-ant-…' + v.slice(-4);
+    return saved;
+  },
+  editKey: function () {
+    document.getElementById('key-saved').classList.add('hidden');
+    document.getElementById('key-edit').classList.remove('hidden');
+    document.getElementById('lb-ai-key').focus();
+  },
+  clearKey: function () {
+    try { localStorage.removeItem('telepy_anthropic_key'); } catch (e) {}
+    document.getElementById('lb-ai-key').value = '';
+    this.keyState();
+    this.runButton();
+    toast('この端末からAPIキーを消しました');
   },
 
   /* 実行ボタンは、これから起きることと金額をそのまま出す */

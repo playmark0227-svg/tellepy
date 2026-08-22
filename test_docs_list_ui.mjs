@@ -94,6 +94,34 @@ check('名簿は要らないと明記', /名簿不要/.test(await page.textConte
 check('データ元の行は出さない', !(await page.isVisible('#src-row')), '');
 check('よく使う条件が最初から並ぶ', (await page.$$('#tp-presets .preset')).length >= 3, '');
 // 「読み取りはAIではない」を否定文ではなく計器で示す
+// APIキーは端末にだけ残す。公開ページに書き込まれていないこと。
+check('公開ページにAPIキーを埋め込んでいない',
+  !/sk-ant-[A-Za-z0-9_-]{20,}/.test(await page.content()), '');
+check('キー未設定なら入力欄が出る',
+  (await page.isVisible('#key-edit')) && !(await page.isVisible('#key-saved')), '');
+const keyState = await page.evaluate(async () => {
+  const el = document.getElementById('lb-ai-key');
+  el.value = 'sk-ant-api03-' + 'x'.repeat(30);
+  UI.keyChanged();
+  const savedAfterType = !document.getElementById('key-saved').classList.contains('hidden');
+  // 打ちかけの値は保存しない（次に開いたとき壊れた値で失敗するのを防ぐ）
+  localStorage.removeItem('telepy_anthropic_key');
+  el.value = 'sk-ant-';
+  UI.keyChanged();
+  const savedHalf = !!localStorage.getItem('telepy_anthropic_key');
+  el.value = 'sk-ant-api03-' + 'x'.repeat(30);
+  UI.keyChanged();
+  const tail = document.getElementById('key-tail').textContent;
+  UI.clearKey();
+  const clearedEdit = !document.getElementById('key-edit').classList.contains('hidden');
+  return { savedAfterType, savedHalf, tail, clearedEdit,
+           gone: !localStorage.getItem('telepy_anthropic_key') };
+});
+check('キーを入れると保存済み表示になる', keyState.savedAfterType, JSON.stringify(keyState));
+check('打ちかけのキーは保存しない', keyState.savedHalf === false, JSON.stringify(keyState));
+check('保存済み表示は末尾だけ見せる', /^sk-ant-…\w{4}$/.test(keyState.tail), keyState.tail);
+check('キーを消せる', keyState.gone && keyState.clearedEdit, JSON.stringify(keyState));
+
 check('計器がAI0回から始まる', /AI\s*0\s*回/.test((await page.textContent('#tp-meter')).replace(/\s+/g,' ')),
   await page.textContent('#tp-meter'));
 check('規模はAIへの希望として伝えると書く',
